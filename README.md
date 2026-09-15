@@ -67,6 +67,14 @@ The Android emulator reaches the host through `http://10.0.2.2:8765`. The server
 
 Access tokens expire, typically after about an hour. Renew the token and replace it in Settings. This version does not implement interactive Google sign-in or automatic token refresh on Android. Do not put a service-account private key in the APK. App-private settings hold the token; cloud backup and device transfer are disabled. This is a personal development app, not a credential distribution service.
 
+For this debug emulator, refresh directly from the BROKER_HOST's existing Application Default Credentials without printing or copying its long-lived credentials:
+
+```bash
+tools/use-vertex-ssh.sh USER@BROKER_HOST YOUR_PROJECT_ID
+```
+
+This stops the app, transfers a short-lived access token over SSH/adb into app-private storage, and selects the real Vertex endpoint. The temporary import file is deleted after reading. The token remains in private settings until replaced; rerun the command when it expires. This helper requires an installed debug APK, authorized adb, and working SSH authentication. The BROKER_HOST's active gcloud CLI account differs from its user ADC, so this helper deliberately uses `gcloud auth application-default print-access-token`.
+
 The Vertex endpoint is `/v1beta1/projects/PROJECT/locations/REGION/publishers/google/models/MODEL:generateContent`. The app parses Gemini's raw PCM audio, wraps it as WAV, and uses the same schema-based text-analysis request on Vertex. See Google's [Vertex TTS request examples](https://docs.cloud.google.com/text-to-speech/docs/gemini-tts) and [Vertex authentication quickstart](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/quickstart).
 
 ## Optional Cloud TTS and Gemini API engines
@@ -105,7 +113,7 @@ To use the host mock from the phone, select that device with `export ANDROID_SER
 
 ## Limits and verification
 
-No real Google credentials were available during development. Vertex authentication, IAM, model availability, billing/credit application, real character-attribution quality and Gemini voice performance are **not verified**. The local mock uses flite and a small speech-tag regex; it cannot evaluate those qualities. Vertex OAuth renewal currently requires pasting a fresh token.
+Live Vertex OAuth, text generation (`gemini-2.5-flash`), and speech generation (`gemini-3.1-flash-tts-preview`, Charon, 24 kHz PCM) succeeded in `us-central1` using the BROKER_HOST's user ADC and project `YOUR_PROJECT_ID`. Real audio also played on the emulator. This does not establish whether promotional credits cover the charges, broad attribution accuracy, or subjective voice quality. The headless emulator is muted. Vertex OAuth renewal requires a fresh token, entered manually or through the SSH helper above. See `VERIFICATION.md` for live character-attribution results.
 
 EPUB spine/TOC and covers, text PDFs, TXT, HTML, Markdown, FB2 and DOCX are supported. This is a text-first reader: complex document layout, embedded illustrations (except covers), footnote navigation, and advanced Markdown formatting are simplified. PDF extraction quality depends on the document's text layer. Scanned PDFs need external OCR; MOBI/AZW3 and DRM are not supported.
 

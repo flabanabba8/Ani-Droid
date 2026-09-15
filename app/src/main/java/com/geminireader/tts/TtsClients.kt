@@ -119,7 +119,7 @@ class CloudTtsClient(private val api: HttpApi): TtsEngine {
 class GeminiApiTtsClient(private val api: HttpApi): TtsEngine {
     companion object {
         fun transcript(speech: Speech) = "# AUDIO PROFILE\nNarrator: ${speech.voice}\n## THE SCENE\nAn audiobook.\n### DIRECTOR'S NOTES\n${speech.prompt}\nSpeak only the transcript.\n#### TRANSCRIPT\n${speech.text}"
-        fun body(speech: Speech) = obj("contents" to arr(obj("parts" to arr(obj("text" to str(transcript(speech)))))), "generationConfig" to obj("responseModalities" to arr(str("AUDIO")), "speechConfig" to obj("voiceConfig" to obj("prebuiltVoiceConfig" to obj("voiceName" to str(speech.voice))))))
+        fun body(speech: Speech) = obj("contents" to arr(obj("role" to str("user"), "parts" to arr(obj("text" to str(transcript(speech)))))), "generationConfig" to obj("responseModalities" to arr(str("AUDIO")), "speechConfig" to obj("voiceConfig" to obj("prebuiltVoiceConfig" to obj("voiceName" to str(speech.voice))))))
         fun interactions(speech: Speech, model: String) = obj("model" to str(model), "input" to str(transcript(speech)), "response_format" to obj("type" to str("audio")), "generation_config" to obj("speech_config" to arr(obj("voice" to str(speech.voice)))))
     }
     override suspend fun synthesize(speech: Speech, settings: Settings): Pcm {

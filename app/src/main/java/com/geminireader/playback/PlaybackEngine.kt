@@ -92,6 +92,7 @@ class PlaybackEngine(private val app: ReaderApp) {
         val settings = app.settings
         job = app.scope.launch {
             try {
+                coroutineScope {
                 val chapterSegments = prepareChapter(book, chapter, settings).filter { it.paragraph > paragraph || (it.paragraph == paragraph && (!resume || it.end > saved.segment)) }
                 segments = chapterSegments
                 require(chapterSegments.isNotEmpty()) { "No text to play" }
@@ -109,7 +110,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                     }
                     val file = pending.remove(index)!!.await()
                     ensureActive()
-                    if (gen != generation) return@launch
+                    if (gen != generation) return@coroutineScope
                     val wasEnded = player.playbackState == Player.STATE_ENDED
                     val label = speakerLabel(segments[index])
                     val item = MediaItem.Builder().setUri(file.toURI().toString()).setMediaId("$gen:$index")
@@ -125,6 +126,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                 }
                 complete = true
                 if (player.playbackState == Player.STATE_ENDED && player.playWhenReady) nextChapter()
+                }
             } catch (e: CancellationException) { throw e } catch (e: Exception) { app.status = e.message ?: "Could not prepare speech"; loading = false }
         }
     }

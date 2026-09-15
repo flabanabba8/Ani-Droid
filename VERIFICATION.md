@@ -1,12 +1,12 @@
 # Verification — 2026-09-15
 
-Branch: `gardeneel`. Tests ran on this Ubuntu machine with user-space Temurin JDK 21, Gradle 9.7.1 and the official Android Emulator. No sudo, system-package installation, Waydroid, real API credentials, or git push was used.
+Branch: `gardeneel`. Tests ran on this Ubuntu machine with user-space Temurin JDK 21, Gradle 9.7.1 and the official Android Emulator. No sudo, system-package installation, Waydroid, or git push was used. Initial checks used mocks; subsequent live Vertex checks used an authorized short-lived token from the BROKER_HOST.
 
 ## Build and automated tests
 
 `source tools/env.sh && ./gradlew testDebugUnitTest assembleDebug lintDebug` passes.
 
-24 JVM tests pass: 8 importer tests, 7 segmentation/direction tests, 7 audio/API/cache tests, and 2 HTTP integration tests. Coverage includes EPUB spine ordering and intra-document TOC anchors; all text formats; PDF reflow; quote styles, apostrophes and unclosed quotes; unknown-speaker merging; gender-based performance; WAV validation/padding; PCM parsing; cache identity; Vertex project/region routing and bearer/project headers; retrying 429 and not retrying 401.
+25 JVM tests pass: 8 importer tests, 7 segmentation/direction tests, 8 audio/API/cache tests, and 2 HTTP integration tests. Coverage includes EPUB spine ordering and intra-document TOC anchors; all text formats; PDF reflow; quote styles, apostrophes and unclosed quotes; unknown-speaker merging; gender-based performance; WAV validation/padding; PCM parsing; cache identity; Vertex project/region routing, explicit user role and bearer/project headers; retrying 429 and not retrying 401.
 
 `python3 tools/mock-server/test_mock.py` passes. All shell scripts pass `bash -n`; Python helpers compile. `git diff --check` passes. Android lint has no errors; remaining warnings include the deliberate API 36 target and third-party PDFBox/Bouncy Castle code. The app's HTTP clients use OkHttp's default certificate verification.
 
@@ -30,6 +30,17 @@ The headless emulator mutes host audio. These checks verify generated PCM/WAV, A
 
 ## Evidence on this machine
 
+### Live Vertex follow-up
+
+- Connected over SSH to `USER@BROKER_HOST` (BROKER_HOST). Used its user Application Default Credentials, not its unrelated active CLI service account. Long-lived refresh credentials remain on the BROKER_HOST; only a short-lived access token entered the emulator's private settings.
+- Project `YOUR_PROJECT_ID`, region `us-central1`: real `gemini-2.5-flash` text request returned HTTP 200; real `gemini-3.1-flash-tts-preview` with Charon returned HTTP 200 and 178,560 bytes of 24 kHz mono PCM for a short connection test.
+- The first real TTS request rejected the absent content role. Added explicit `role: user` to speech and analysis requests and a regression test.
+- Real analysis initially produced no usable quote assignments. Strengthened instructions with an explicit list of required quote IDs and reject incomplete assignments. The revised live analysis correctly assigned `2.0` and `2.1` to Alice and `3.0` and `3.1` to Captain Reed in a new four-paragraph test story.
+- Real speech played through Media3. Android reported `PLAYING` with Captain Reed metadata; inspected `vertex-live-reader.png` showing his quote highlighted and speaker label. Inspected `vertex-live-alice.png` showing Alice's quote highlighted with her label. The app retained Charon and used its character direction builder. This is a small functional sample, not a general accuracy or listening evaluation.
+- Fixed cold-start debug settings ordering and propagation of failed audio-prefetch coroutines, exposed during this run. `tools/use-vertex-ssh.sh` renews the debug app's token without putting it in adb intent extras or terminal output.
+- Rechecked an unavailable mock endpoint: the app stayed running and displayed a connection/analysis error. Restored real Vertex credentials afterward. Removed the host's temporary token file; the original refresh credentials were not copied or changed.
+- `testDebugUnitTest installDebug lintDebug` passed; build output is in `vertex-live-build.log`.
+
 Generated files are intentionally gitignored under `tools/artifacts/`:
 
 - `build-final.log` and the HTML/XML reports under `app/build/`.
@@ -42,7 +53,7 @@ Screenshots listed above were opened and inspected, not merely captured. Early l
 
 ## Not verified
 
-Live Vertex/Gemini/Cloud authentication, IAM and quota, real model availability, application of Google Cloud credits, real LLM attribution accuracy, and Gemini character voice quality require your credentials. Cloud TTS API-key support remains uncertain; the optional Cloud engine provides OAuth token/project settings. Gemini's Interactions fallback is contract-tested against the mock, not a live service. Vertex mode stays on Vertex.
+Live Vertex authentication and the two default models are verified for the project/region above, but billing-credit application, sustained quota, broad LLM attribution accuracy, and subjective character voice quality remain unverified. Optional Cloud TTS API-key support remains uncertain; the optional Cloud engine provides OAuth token/project settings. Gemini's Interactions fallback is contract-tested against the mock, not a live service. Vertex mode stays on Vertex.
 
 Physical-phone wireless adb installation is documented but no phone was available. OAuth refresh on Android is not implemented; replace expired access tokens in Settings. Highlight timing is estimated per sentence. Scanned PDF OCR, DRM and MOBI/AZW3 are outside scope.
 

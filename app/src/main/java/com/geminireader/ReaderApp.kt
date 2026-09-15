@@ -16,9 +16,13 @@ import com.geminireader.tts.*
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 class ReaderApp : Application() {
+    private val intentMutex = Mutex()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     lateinit var books: BookRepository
     var library by mutableStateOf(emptyList<BookMeta>())
@@ -112,6 +116,17 @@ class ReaderApp : Application() {
     fun savePosition() { val id = book?.id ?: return; val pos = Position(chapter, paragraph); scope.launch(Dispatchers.IO) { books.position(id, pos) } }
     fun delete(id: String) = task { if (playback.activeBookId == id) playback.stop(); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
     fun handle(intent: Intent) = task {
+        intentMutex.withLock {
+        settings = settingsStore.flow.first()
+        if (BuildConfig.DEBUG && intent.hasExtra("debug_vertex_project")) {
+            val tokenFile = File(filesDir, "debug-vertex-token")
+            val token = try { tokenFile.readText().trim() } finally { tokenFile.delete() }
+            require(token.isNotBlank()) { "Missing debug Vertex token" }
+            val updated = validateSettings(settings.copy(engine = "vertex", vertexProject = intent.getStringExtra("debug_vertex_project")!!,
+                vertexLocation = intent.getStringExtra("debug_vertex_location") ?: "us-central1", vertexToken = token, vertexUrl = ""))
+            playback.stop(); settingsStore.save(updated); settings = updated
+            status = "Vertex credentials updated"
+        }
         if (BuildConfig.DEBUG && intent.hasExtra("debug_mock")) {
             val url = intent.getStringExtra("debug_mock")!!
             settings = settings.copy(apiKey = "mock", geminiKey = "mock", oauthToken = "", project = "", cloudUrl = url, geminiUrl = url, vertexUrl = url, vertexProject = "mock-project", vertexToken = "mock", engine = intent.getStringExtra("debug_engine") ?: "vertex")
@@ -137,6 +152,7 @@ class ReaderApp : Application() {
             if (intent.hasExtra("debug_chapter")) book?.let { chapter = intent.getIntExtra("debug_chapter", 0).coerceIn(0, it.chapters.lastIndex); paragraph = 0 }
             loadCharacters()
             if (intent.hasExtra("debug_play")) book?.let { paragraph = intent.getIntExtra("debug_play", 0).coerceIn(0, it.chapters[chapter].paragraphs.lastIndex); screen = "reader"; playback.play(it, chapter, paragraph) }
+        }
         }
     }
 }

@@ -7,6 +7,10 @@ import org.junit.Test
 import java.util.Base64
 
 class AudioTest {
+    @Test fun speechRequestHasExplicitUserRoleForVertex() {
+        val body = GeminiApiTtsClient.body(Speech("Hello", "Warmly", "Charon"))
+        assertTrue(body.toString().contains("\"role\":\"user\""))
+    }
     @Test fun wavRoundtripAndPadding() {
         val pcm = Pcm(ByteArray(480) { if (it % 2 == 0) 100 else 1 })
         val decoded = Wav.decode(Wav.encode(pcm))
