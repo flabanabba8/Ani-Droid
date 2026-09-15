@@ -96,6 +96,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val book = app.book ?: return
     val chapter = book.chapters[app.chapter]
     var toc by remember { mutableStateOf(false) }
+    var bookTools by remember { mutableStateOf(false) }
     var inspecting by remember { mutableStateOf<Segment?>(null) }
     var exporting by remember { mutableStateOf<PlaybackEngine.ExportSelection?>(null) }
     var preparing by remember { mutableStateOf(false) }
@@ -114,18 +115,20 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 20.dp)) {
-            Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
-            TextButton(onClick = { toc = true }) { Text("Contents · ${app.chapter + 1}/${book.chapters.size} · ${chapter.title}", maxLines = 2) }
-            Row {
-                TextButton(onClick = { app.screen = "characters" }) { Text("Characters") }
-                TextButton(onClick = { runCatching { app.exportChapter() }.onSuccess { exporting = it }.onFailure { app.status = it.message.orEmpty() } }, enabled = !app.busy && !app.preparing) { Text("Export audio") }
+            Text(book.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { toc = true }, modifier = Modifier.weight(1f)) { Text("${app.chapter + 1}/${book.chapters.size} · ${chapter.title}", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                Box {
+                    TextButton(onClick = { bookTools = true }) { Text("Book tools") }
+                    DropdownMenu(expanded = bookTools, onDismissRequest = { bookTools = false }) {
+                        DropdownMenuItem(text = { Text("Characters") }, onClick = { bookTools = false; app.screen = "characters" })
+                        DropdownMenuItem(text = { Text("Pronunciation") }, onClick = { bookTools = false; app.screen = "pronunciation" })
+                        DropdownMenuItem(text = { Text("Series voices") }, onClick = { bookTools = false; app.screen = "series" })
+                        DropdownMenuItem(text = { Text("Export audio") }, enabled = !app.busy && !app.preparing, onClick = { bookTools = false; runCatching { app.exportChapter() }.onSuccess { exporting = it }.onFailure { app.status = it.message.orEmpty() } })
+                        DropdownMenuItem(text = { Text(if (app.preparing) "Cancel preparation" else "Prepare chapter offline") }, onClick = { bookTools = false; if (app.preparing) app.cancelPreparation() else preparing = true })
+                    }
+                }
             }
-            Row {
-                TextButton(onClick = { app.screen = "pronunciation" }) { Text("Pronunciation") }
-                TextButton(onClick = { app.screen = "series" }) { Text("Series voices") }
-            }
-            if (app.preparing) TextButton(onClick = { app.cancelPreparation() }) { Text("Cancel preparation") }
-            else TextButton(onClick = { preparing = true }) { Text("Prepare chapter offline") }
         }
         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             itemsIndexed(chapter.paragraphs) { index, text ->

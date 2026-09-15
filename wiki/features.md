@@ -37,7 +37,14 @@ The complete post-MVP brainstorm, with the requested audio export addition. Orig
 
 17. **Audio export.** IMPLEMENTED: export the generated current chapter queue through Android's document picker, potentially a partial chapter. Lossless WAV; streamed concatenation; export itself makes no synthesis requests. Future: offline chapter preparation, AAC/M4A, chapter markers, metadata and full-book export with explicit confirmation.
 
-## First implementation milestone
+## Additional TTS providers (future)
+
+18. **More cloud TTS engines.** PLANNED: Groq, OpenAI, and evaluate other established providers (for example Azure, Amazon Polly, ElevenLabs and Cartesia). Prioritize legitimate free tiers and low-cost options. Compare current model availability, monthly allowances, expiry/trial limits, billing requirements, export rights, voice quality, supported languages, latency and direction controls before implementing. Do not label a service permanently free based on promotional credits or assume a provider's free LLM tier includes speech. Provider adapters must preserve pronunciation, cache identity, audio export and accurate capability reporting; never silently switch providers or billing accounts.
+19. **Local TTS.** PLANNED, explicitly deferred by user: Android-installed offline engines first, embedded neural engines next, and authenticated LAN-hosted engines on BROKER_HOST/another machine. Evaluate sherpa-onnx with Kokoro and lighter VITS/Piper-compatible models; verify individual model/runtime licenses and benchmark ANDROID_DEVICE's RAM, battery, thermal behavior and faster-than-playback generation. LAN models may be substantially larger. Local synthesis is not the same as offline playback of downloaded Gemini speech; character analysis may still require a cloud model.
+
+Research starting points: [Android voice network requirement](https://developer.android.com/reference/android/speech/tts/Voice#isNetworkConnectionRequired()), [sherpa Android engines](https://k2-fsa.github.io/sherpa/onnx/tts/apk-engine.html), [Kokoro Android example](https://k2-fsa.github.io/sherpa/onnx/tts/all/Chinese-English/kokoro-multi-lang-v1_1.html), [Picovoice Orca](https://picovoice.ai/docs/orca/), [Groq changelog](https://console.groq.com/docs/changelog). No additional engines implemented or installed yet. Groq's changelog indicates migration from PlayAI to Orpheus; old API examples should not be treated as current model availability.
+
+## Original first implementation milestone
 
 User clarified **three priorities: automatic Vertex renewal, time-based buffering, reliable resume**, plus audio export. Local Wi-Fi via the BROKER_HOST is acceptable. Offline preparation and series casts remain backlog, outside this milestone.
 

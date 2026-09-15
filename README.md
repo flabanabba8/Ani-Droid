@@ -132,6 +132,8 @@ To use the host mock from the phone, select that device with `export ANDROID_SER
 
 ### Offline chapters, pronunciation and series voices
 
+Reader tools are grouped under **Book tools** beside the chapter selector. Open that menu for Characters, Pronunciation, Series voices, Export audio, and preparation/cancellation. The title and chapter selector now occupy two compact lines instead of a stack of action rows.
+
 - **Prepare chapter offline** explicitly generates and retains the current chapter. Confirm the potentially billed work; keep the app open. You can cancel and retry, reusing completed segments. A fully prepared matching chapter plays without network and exports in full. Voice/dictionary changes require preparing again, but unchanged speech is reused. Temporary plus retained disk space is needed. Use **Prepare chapter offline → Remove saved chapter audio…** to reclaim storage; exported files are unaffected.
 - **Pronunciation** has manual written-word/phrase and “Speak as” fields, Add/Edit/Delete, narrator Preview, and book/global/series scopes. Series scope requires a linked series. Whole-word/phrase replacements affect only TTS; no source text is modified. A phonetic spelling is a hint, not a guaranteed phoneme sequence. Preview may incur synthesis charges.
 - **Series voices** lets you create/join a series, create/edit voice profiles and explicitly link a detected speaker in each book. Only user-authored performance/voice data is reused; no model-generated future-volume aliases, descriptions or relationships are imported. This avoids automatic identity merging, **not all spoilers**: current analysis still reads the whole chapter. Strict reveal-gated analysis is deferred. See [design and verification](wiki/next-milestone.md).
