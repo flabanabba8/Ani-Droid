@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import com.geminireader.text.Segmenter
+import com.geminireader.text.Segment
+import com.geminireader.analysis.VoiceDirector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.geminireader.ReaderApp
@@ -43,7 +46,9 @@ import java.io.File
         }) { padding ->
             Column(Modifier.padding(padding).fillMaxSize()) {
                 if (app.status.isNotBlank()) Text(app.status, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
-                if (app.screen == "reader" && app.book != null) ReaderScreen(app) else LibraryScreen(app)
+                when { app.screen == "characters" && app.book != null -> CharactersScreen(app)
+                    app.screen == "reader" && app.book != null -> ReaderScreen(app)
+                    else -> LibraryScreen(app) }
             }
         }
     }
@@ -79,6 +84,7 @@ import java.io.File
     val book = app.book ?: return
     val chapter = book.chapters[app.chapter]
     var toc by remember { mutableStateOf(false) }
+    var inspecting by remember { mutableStateOf<Segment?>(null) }
     val list = rememberLazyListState()
     var follow by remember { mutableStateOf(true) }
     val playback = app.playback
@@ -89,6 +95,7 @@ import java.io.File
         Column(Modifier.padding(horizontal = 20.dp)) {
             Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
             TextButton(onClick = { toc = true }) { Text("Contents · ${app.chapter + 1}/${book.chapters.size} · ${chapter.title}", maxLines = 2) }
+            TextButton(onClick = { app.screen = "characters" }) { Text("Characters") }
         }
         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             itemsIndexed(chapter.paragraphs) { index, text ->
@@ -101,7 +108,9 @@ import java.io.File
                         if (sentence != null) addStyle(SpanStyle(background = Color(0xffffd982), color = Color(0xff292817)), active.start + sentence.first, active.start + sentence.last + 1)
                     }
                 }
-                Text(annotated, Modifier.fillMaxWidth().clickable { app.paragraph = index; playback.play(book, app.chapter, index) }, fontFamily = FontFamily.Serif, fontSize = 20.sp, lineHeight = 30.sp)
+                Text(annotated, Modifier.fillMaxWidth().combinedClickable(onClick = { app.paragraph = index; playback.play(book, app.chapter, index) }, onLongClick = {
+                    inspecting = active?.takeIf { it.paragraph == index } ?: Segmenter.dialogue(chapter.paragraphs).firstOrNull { it.paragraph == index && it.q != null } ?: Segment(index, 0, text.length, text)
+                }), fontFamily = FontFamily.Serif, fontSize = 20.sp, lineHeight = 30.sp)
             }
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
@@ -118,4 +127,21 @@ import java.io.File
     if (toc) AlertDialog(onDismissRequest = { toc = false }, title = { Text("Contents") }, text = {
         LazyColumn { itemsIndexed(book.chapters) { index, entry -> TextButton(onClick = { app.selectChapter(index); toc = false }) { Text("${index + 1}. ${entry.title}") } } }
     }, confirmButton = { TextButton(onClick = { toc = false }) { Text("Close") } })
+    inspecting?.let { segment ->
+        val line = app.analysis.lines.firstOrNull { it.q == segment.q }
+        val character = app.cast.firstOrNull { it.id == line?.speaker }
+        val speech = VoiceDirector.direct(segment, app.settings, character, line?.delivery.orEmpty(), true)
+        AlertDialog(onDismissRequest = { inspecting = null }, title = { Text(character?.name ?: "Narrator") }, text = {
+            LazyColumn {
+                item { Text(segment.text) }; item { Text("Voice: ${speech.voice}\n${speech.prompt}", Modifier.padding(vertical = 16.dp)) }
+                val quotes = Segmenter.dialogue(chapter.paragraphs).filter { it.paragraph == segment.paragraph && it.q != null }.distinctBy { it.q }
+                if (quotes.size > 1 || segment.q == null) items(quotes) { quote -> TextButton(onClick = { inspecting = quote }) { Text("Inspect ${quote.q}: ${quote.text.take(60)}") } }
+                if (segment.q != null) {
+                    item { Text("Reassign this dialogue") }
+                    item { TextButton(onClick = { app.reassign(segment.q, "unknown"); inspecting = null }) { Text("Narrator / unknown") } }
+                    items(app.cast) { person -> TextButton(onClick = { app.reassign(segment.q, person.id); inspecting = null }) { Text(person.name) } }
+                }
+            }
+        }, confirmButton = { TextButton(onClick = { inspecting = null }) { Text("Close") } })
+    }
 }

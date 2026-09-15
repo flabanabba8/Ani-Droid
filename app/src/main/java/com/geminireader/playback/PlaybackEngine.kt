@@ -113,7 +113,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                     val item = MediaItem.Builder().setUri(file.toURI().toString()).setMediaId("$gen:$index")
                         .setMediaMetadata(MediaMetadata.Builder().setTitle(book.title).setArtist(label).setAlbumTitle(book.chapters[chapter].title).build()).build()
                     player.addMediaItem(item)
-                    if (index == 0) { player.prepare(); if (resume && saved.chapter == chapter) player.seekTo(0, saved.offsetMs); loading = false; app.status = "" }
+                    if (index == 0) { player.prepare(); if (resume && saved.chapter == chapter) player.seekTo(0, saved.offsetMs); loading = false; if (app.status == "Preparing audio…" || app.status == "Analyzing…") app.status = "" }
                     else if (wasEnded) { player.seekTo(index, 0); player.prepare() }
                     // Eviction can remove completed items, but never the current/prefetched audio.
                     if (index > settings.prefetch + 2) {
