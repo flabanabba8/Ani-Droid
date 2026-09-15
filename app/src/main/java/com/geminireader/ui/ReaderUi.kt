@@ -27,6 +27,8 @@ import androidx.compose.ui.text.SpanStyle
 import com.geminireader.text.Segmenter
 import com.geminireader.text.Segment
 import com.geminireader.analysis.VoiceDirector
+import com.geminireader.playback.BufferPolicy
+import com.geminireader.playback.PlaybackEngine
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.geminireader.ReaderApp
@@ -93,6 +95,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val chapter = book.chapters[app.chapter]
     var toc by remember { mutableStateOf(false) }
     var inspecting by remember { mutableStateOf<Segment?>(null) }
+    var exporting by remember { mutableStateOf<PlaybackEngine.ExportSelection?>(null) }
+    val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { app.finishExport(it) }
     val list = rememberLazyListState()
     var follow by remember { mutableStateOf(true) }
     val playback = app.playback
@@ -101,14 +105,17 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     LaunchedEffect(active?.paragraph, follow) { if (follow && active != null) list.animateScrollToItem(active.paragraph) }
     LaunchedEffect(book.id, app.chapter, list) {
         snapshotFlow { list.firstVisibleItemIndex }.distinctUntilChanged().collect { index ->
-            if (!playback.speaking && !playback.loading) { app.paragraph = index; app.savePosition() }
+            if (!playback.speaking && !playback.loading) { app.paragraph = index; app.saveReadingPosition() }
         }
     }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 20.dp)) {
             Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
             TextButton(onClick = { toc = true }) { Text("Contents · ${app.chapter + 1}/${book.chapters.size} · ${chapter.title}", maxLines = 2) }
-            TextButton(onClick = { app.screen = "characters" }) { Text("Characters") }
+            Row {
+                TextButton(onClick = { app.screen = "characters" }) { Text("Characters") }
+                TextButton(onClick = { runCatching { playback.exportSelection() }.onSuccess { exporting = it }.onFailure { app.status = it.message.orEmpty() } }, enabled = !app.busy && playback.activeBookId == book.id && playback.activeChapter == app.chapter) { Text("Export audio") }
+            }
         }
         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             itemsIndexed(chapter.paragraphs) { index, text ->
@@ -127,6 +134,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             }
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
+        if (playback.activeBookId == book.id) Text(BufferPolicy.label(playback.readyMs), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             Button(onClick = { playback.toggle() }) { Text(if (playback.activeBookId == book.id && playback.activeChapter == app.chapter && playback.player.playWhenReady && (playback.speaking || playback.loading || playback.player.mediaItemCount > 0)) "Pause" else "Play") }
             TextButton(onClick = { playback.changeSpeed(if (playback.speed >= 2f) .75f else playback.speed + .25f) }) { Text("${playback.speed}×") }
@@ -137,6 +145,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             TextButton(onClick = { app.selectChapter(app.chapter + 1) }, enabled = app.chapter < book.chapters.lastIndex) { Text("Next chapter") }
         }
     }
+    exporting?.let { selection -> AlertDialog(onDismissRequest = { exporting = null }, title = { Text("Export generated audio") }, text = { Text(selection.description + "\nExport itself requests no new speech. Normal playback buffering may continue.") }, confirmButton = {
+        TextButton(onClick = { exporting = null; app.stageExport(selection) { exportPicker.launch("reader-chapter-${app.chapter + 1}.wav") } }) { Text("Save WAV") }
+    }, dismissButton = { TextButton(onClick = { exporting = null }) { Text("Cancel") } }) }
     if (toc) AlertDialog(onDismissRequest = { toc = false }, title = { Text("Contents") }, text = {
         LazyColumn { itemsIndexed(book.chapters) { index, entry -> TextButton(onClick = { app.selectChapter(index); toc = false }) { Text("${index + 1}. ${entry.title}") } } }
     }, confirmButton = { TextButton(onClick = { toc = false }) { Text("Close") } })

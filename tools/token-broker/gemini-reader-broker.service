@@ -1,0 +1,14 @@
+[Unit]
+Description=Gemini Reader private LAN token broker
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/share/gemini-reader-broker/broker.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

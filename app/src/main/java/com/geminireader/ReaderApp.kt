@@ -39,17 +39,40 @@ class ReaderApp : Application() {
     var cast by mutableStateOf(emptyList<Character>())
     var analysis by mutableStateOf(Analysis())
     var models by mutableStateOf(emptyList<String>())
+    fun rememberBook(id: String) { atomicWrite(File(filesDir, "last-book.txt"), id) }
+    private var pendingExport: File? = null
+    fun stageExport(selection: PlaybackEngine.ExportSelection, ready: () -> Unit) = task {
+        val file = File(cacheDir, "reader-export.wav")
+        status = "Preparing WAV export…"
+        withContext(Dispatchers.IO) {
+            val context = currentCoroutineContext()
+            try { file.outputStream().use { WavExport.write(selection.files, it) { context.ensureActive() } } }
+            catch (e: Exception) { file.delete(); throw e }
+        }
+        pendingExport = file; status = "Choose where to save the audio"; ready()
+    }
+    fun finishExport(uri: Uri?) = task {
+        // The document picker can outlive our process; the completed staging file is recoverable.
+        val file = pendingExport ?: File(cacheDir, "reader-export.wav").takeIf { it.isFile } ?: return@task
+        try {
+            if (uri != null) withContext(Dispatchers.IO) {
+                requireNotNull(contentResolver.openOutputStream(uri, "wt")) { "Could not open export destination" }.use { output -> file.inputStream().use { it.copyTo(output) } }
+            }
+            status = if (uri == null) "Export canceled" else "Audio exported"
+        } finally { file.delete(); pendingExport = null }
+    }
     fun validateSettings(value: Settings): Settings {
         require(value.model.matches(Regex("[a-zA-Z0-9._/-]+")) && value.analysisModel.matches(Regex("[a-zA-Z0-9._/-]+"))) { "Enter valid model names" }
         require(value.narratorVoice in VoiceDirector.female + VoiceDirector.male) { "Select a supported narrator voice" }
         require(value.engine in listOf("vertex", "cloud", "gemini")) { "Select a supported engine" }
+        VertexAuth.validate(value)
         if (value.engine == "vertex" && value.vertexProject.isNotBlank()) VertexEndpoint.generate(value, value.model)
         for (url in listOf(value.cloudUrl, value.geminiUrl, value.vertexUrl).filter { it.isNotBlank() }) {
             val parsed = url.toHttpUrl()
             require(parsed.username.isEmpty() && parsed.password.isEmpty() && parsed.query == null && parsed.fragment == null) { "Base URLs must not contain credentials, queries or fragments" }
             require(parsed.isHttps || (BuildConfig.DEBUG && parsed.host in listOf("10.0.2.2", "127.0.0.1", "localhost"))) { "Use HTTPS (debug mock allows loopback HTTP)" }
         }
-        return value.copy(prefetch = value.prefetch.coerceIn(1,8), withinPauseMs = value.withinPauseMs.coerceIn(0,2000), paragraphPauseMs = value.paragraphPauseMs.coerceIn(0,5000), fontSize = value.fontSize.coerceIn(14,32), cacheMb = value.cacheMb.coerceIn(32,2048))
+        return value.copy(prefetch = value.prefetch.coerceIn(1,8), bufferSeconds = value.bufferSeconds.coerceIn(15,600), withinPauseMs = value.withinPauseMs.coerceIn(0,2000), paragraphPauseMs = value.paragraphPauseMs.coerceIn(0,5000), fontSize = value.fontSize.coerceIn(14,32), cacheMb = value.cacheMb.coerceIn(32,2048))
     }
     fun setTheme(theme: String) = task {
         require(theme in listOf("dark", "light", "system"))
@@ -71,8 +94,9 @@ class ReaderApp : Application() {
             val endpoint = if (vertex) "${VertexEndpoint.base(valid)}/v1beta1/publishers/google/models" else "${valid.geminiUrl.trimEnd('/')}/v1beta/models"
             val url = endpoint.toHttpUrl().newBuilder().addQueryParameter("pageSize", "100")
             if (next.isNotEmpty()) url.addQueryParameter("pageToken", next)
-            if (vertex) { VertexEndpoint.generate(valid, valid.analysisModel); require(valid.vertexToken.isNotBlank()) { "Enter a Vertex OAuth token first" } }
-            val response = playback.api.request(url.build().toString(), if (vertex) "" else valid.geminiKey.ifBlank { valid.apiKey }, token = if (vertex) valid.vertexToken else "", project = if (vertex) valid.vertexProject else "")
+            if (vertex) VertexEndpoint.generate(valid, valid.analysisModel)
+            val response = if (vertex) VertexAuth.request(playback.api, valid, url.build().toString())
+                else playback.api.request(url.build().toString(), valid.geminiKey.ifBlank { valid.apiKey })
             names += (response["publisherModels"] ?: response["models"])?.jsonArray.orEmpty().mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.content?.substringAfterLast('/') }
             next = response["nextPageToken"]?.jsonPrimitive?.content.orEmpty()
         } while (next.isNotBlank() && names.size < 1000)
@@ -114,6 +138,7 @@ class ReaderApp : Application() {
         book = loaded.first; chapter = loaded.second.chapter.coerceIn(0, loaded.first.chapters.lastIndex)
         paragraph = loaded.second.paragraph.coerceIn(0, loaded.first.chapters[chapter].paragraphs.lastIndex)
         screen = "reader"; status = ""
+        rememberBook(id)
         loadCharacters()
     }
     suspend fun loadCharacters() { val id = book?.id ?: return; val ch = chapter; val values = withContext(Dispatchers.IO) { analyzer.cast(id) to (analyzer.cached(id, ch) ?: Analysis()) }; if (book?.id == id && chapter == ch) { cast = values.first; analysis = values.second } }
@@ -132,23 +157,42 @@ class ReaderApp : Application() {
         analyzer.retry(readingBook, readingChapter, settings)
         loadCharacters(); status = "Chapter analysis ready"
     }
-    fun savePosition() { val id = book?.id ?: return; val pos = Position(chapter, paragraph); scope.launch(Dispatchers.IO) { books.position(id, pos) } }
+    fun savePosition() { val id = book?.id ?: return; books.position(id, Position(chapter, paragraph)) }
+    fun saveReadingPosition() { val id = book?.id ?: return; val pos = Position(chapter, paragraph); scope.launch(Dispatchers.IO) { books.readingPosition(id, pos) } }
     fun delete(id: String) = task { if (playback.activeBookId == id) playback.stop(); analyzer.cancelBook(id); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
     fun handle(intent: Intent) = task {
         intentMutex.withLock {
         settings = settingsStore.flow.first()
+        if (book == null && intent.action == Intent.ACTION_MAIN && !intent.hasExtra("debug_import") && !intent.hasExtra("debug_book")) {
+            val last = runCatching { File(filesDir, "last-book.txt").readText().trim() }.getOrNull()
+            if (last != null) runCatching {
+                val loaded = books.load(last); val saved = books.position(last)
+                book = loaded; chapter = saved.chapter.coerceIn(0, loaded.chapters.lastIndex)
+                paragraph = saved.paragraph.coerceIn(0, loaded.chapters[chapter].paragraphs.lastIndex); screen = "reader"
+                loadCharacters()
+            }
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_broker", false)) {
+            val file = File(filesDir, "debug-broker.json")
+            val config = try { json.parseToJsonElement(file.readText()).jsonObject } finally { file.delete() }
+            val updated = validateSettings(settings.copy(engine = "vertex", vertexUrl = "", vertexToken = "", vertexProject = config.getValue("project").jsonPrimitive.content,
+                vertexBrokerUrl = config.getValue("url").jsonPrimitive.content, vertexBrokerPin = config.getValue("pin").jsonPrimitive.content,
+                vertexBrokerSecret = config.getValue("secret").jsonPrimitive.content))
+            playback.stop(); settingsStore.save(updated); settings = updated; status = "Automatic Vertex renewal configured"
+        }
         if (BuildConfig.DEBUG && intent.hasExtra("debug_vertex_project")) {
             val tokenFile = File(filesDir, "debug-vertex-token")
             val token = try { tokenFile.readText().trim() } finally { tokenFile.delete() }
             require(token.isNotBlank()) { "Missing debug Vertex token" }
             val updated = validateSettings(settings.copy(engine = "vertex", vertexProject = intent.getStringExtra("debug_vertex_project")!!,
-                vertexLocation = intent.getStringExtra("debug_vertex_location") ?: "us-central1", vertexToken = token, vertexUrl = ""))
+                vertexLocation = intent.getStringExtra("debug_vertex_location") ?: "us-central1", vertexToken = token, vertexUrl = "",
+                vertexBrokerUrl = "", vertexBrokerPin = "", vertexBrokerSecret = ""))
             playback.stop(); settingsStore.save(updated); settings = updated
             status = "Vertex credentials updated"
         }
         if (BuildConfig.DEBUG && intent.hasExtra("debug_mock")) {
             val url = intent.getStringExtra("debug_mock")!!
-            settings = settings.copy(apiKey = "mock", geminiKey = "mock", oauthToken = "", project = "", cloudUrl = url, geminiUrl = url, vertexUrl = url, vertexProject = "mock-project", vertexToken = "mock", engine = intent.getStringExtra("debug_engine") ?: "vertex")
+            settings = settings.copy(apiKey = "mock", geminiKey = "mock", oauthToken = "", project = "", cloudUrl = url, geminiUrl = url, vertexUrl = url, vertexProject = "mock-project", vertexToken = "mock", vertexBrokerUrl = "", vertexBrokerPin = "", vertexBrokerSecret = "", engine = intent.getStringExtra("debug_engine") ?: "vertex")
             settingsStore.save(settings)
         }
         @Suppress("DEPRECATION")
@@ -165,6 +209,7 @@ class ReaderApp : Application() {
                 books.save(result.book, result.cover)
             }
             playback.stop(); book = imported; chapter = 0; paragraph = 0; screen = "reader"; refresh(); loadCharacters(); status = "Imported ${imported.title}"
+            rememberBook(imported.id)
         }
         if (BuildConfig.DEBUG) {
             intent.getStringExtra("debug_book")?.let { id -> book = withContext(Dispatchers.IO) { books.load(id) }; screen = "reader" }

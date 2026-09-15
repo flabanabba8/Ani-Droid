@@ -17,6 +17,7 @@ class AudioCache(private val root: File) {
             return MessageDigest.getInstance("SHA-256").digest(fields.joinToString("") { "${it.length}:$it" }.toByteArray()).joinToString("") { "%02x".format(it) }
         }
     }
+    fun contains(speech: Speech, settings: Settings): Boolean = File(root, "${key(speech, settings)}.wav").isFile
     suspend fun get(speech: Speech, settings: Settings, engine: TtsEngine): File = withContext(Dispatchers.IO) {
         val file = File(root, "${key(speech, settings)}.wav")
         pinned.add(file.name)

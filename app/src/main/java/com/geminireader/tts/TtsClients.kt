@@ -84,8 +84,7 @@ object VertexEndpoint {
         return "${base(s)}/v1beta1/projects/${s.vertexProject}/locations/${s.vertexLocation}/publishers/google/models/${model.removePrefix("models/")}:generateContent"
     }
     suspend fun request(api: HttpApi, s: Settings, model: String, body: JsonObject): JsonObject {
-        require(s.vertexToken.isNotBlank()) { "Enter a Vertex OAuth access token in Settings" }
-        return api.request(generate(s, model), "", body, s.vertexToken, s.vertexProject)
+        return VertexAuth.request(api, s, generate(s, model), body)
     }
 }
 class VertexTtsClient(private val api: HttpApi): TtsEngine {

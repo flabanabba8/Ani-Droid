@@ -48,8 +48,12 @@ import kotlinx.coroutines.withContext
                 item { Text("Vertex AI · speech and analysis use this project", style = MaterialTheme.typography.titleMedium) }
                 item { Field("Google Cloud project ID", draft.vertexProject) { draft = draft.copy(vertexProject = it.trim()) } }
                 item { Field("Vertex region", draft.vertexLocation) { draft = draft.copy(vertexLocation = it.trim()) } }
-                item { Field("Vertex OAuth access token", draft.vertexToken, true) { draft = draft.copy(vertexToken = it.trim()) } }
-                item { Text("Enable the Vertex AI API on your credits project. Use an OAuth access token from an account with Vertex AI User access. Tokens expire; see README for renewal.", style = MaterialTheme.typography.bodySmall) }
+                item { Text(if (draft.vertexBrokerUrl.isBlank()) "Authentication: manual token" else "Authentication: automatic renewal via BROKER_HOST", style = MaterialTheme.typography.titleSmall) }
+                item { Field("Token broker HTTPS URL (blank = manual)", draft.vertexBrokerUrl) { draft = draft.copy(vertexBrokerUrl = it.trim()) } }
+                item { Field("Broker certificate SHA-256 fingerprint", draft.vertexBrokerPin) { draft = draft.copy(vertexBrokerPin = it.trim()) } }
+                item { Field("Broker pairing secret", draft.vertexBrokerSecret, true) { draft = draft.copy(vertexBrokerSecret = it.trim()) } }
+                item { Field("Manual Vertex access token (unused with broker)", draft.vertexToken, true) { draft = draft.copy(vertexToken = it.trim()) } }
+                item { Text("Automatic renewal requires the BROKER_HOST on local Wi-Fi. Google refresh credentials remain there. Broker setup is documented in the project wiki; no public internet port is required.", style = MaterialTheme.typography.bodySmall) }
             } else {
             item { Field("Cloud API key", draft.apiKey, true) { draft = draft.copy(apiKey = it.trim()) } }
             item { Field("Gemini / analysis key (blank = Cloud key)", draft.geminiKey, true) { draft = draft.copy(geminiKey = it.trim()) } }
@@ -66,7 +70,8 @@ import kotlinx.coroutines.withContext
             item { Choice("Analysis model", draft.analysisModel, AnalysisModels.choices(draft.analysisModel, app.models)) { draft = draft.copy(analysisModel = it) } }
             item { Text("Flash is the default; Flash-Lite favors speed, Pro may take longer. Fetch models adds catalog choices; availability depends on your project and region.", style = MaterialTheme.typography.bodySmall) }
             item { Row { TextButton(onClick = { app.fetchModels(draft); showModels = true }, enabled = !app.busy) { Text("Fetch models") }; if (app.models.isNotEmpty()) TextButton(onClick = { showModels = true }) { Text("Choose model") } } }
-            item { Amount("Prefetch segments", draft.prefetch, 1f..8f) { draft = draft.copy(prefetch = it) } }
+            item { Amount("Audio buffer target (seconds)", draft.bufferSeconds, 15f..600f) { draft = draft.copy(bufferSeconds = it) } }
+            item { Text("Uses actual audio duration at your playback speed. Two speech requests can run concurrently; up to two segments may exceed the target. More buffering generates and bills more audio in advance.", style = MaterialTheme.typography.bodySmall) }
             item { Amount("Pause within paragraph (ms)", draft.withinPauseMs, 0f..2000f) { draft = draft.copy(withinPauseMs = it) } }
             item { Amount("Pause between paragraphs (ms)", draft.paragraphPauseMs, 0f..5000f) { draft = draft.copy(paragraphPauseMs = it) } }
             item { Amount("Reader font size", draft.fontSize, 14f..32f) { draft = draft.copy(fontSize = it) } }
