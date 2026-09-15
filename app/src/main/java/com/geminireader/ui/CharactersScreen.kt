@@ -16,6 +16,7 @@ import com.geminireader.text.Segment
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { Text("Characters", style = MaterialTheme.typography.headlineLarge) }
         item { Row { TextButton(onClick = { app.screen = "reader" }) { Text("Back to book") }; Button(onClick = { app.analyzeWholeBook() }, enabled = !app.busy) { Text("Analyze whole book") } } }
+        item { Button(onClick = { app.analyzeChapter() }, enabled = !app.busy) { Text("Analyze this chapter / retry") } }
         item { Text("Characters are detected before each chapter plays. Edit how the narrator performs them; distinct voices are used only in distinct-voice mode.", style = MaterialTheme.typography.bodySmall) }
         if (app.cast.isEmpty()) item { Text("No characters yet. Play a chapter or analyze the book.") }
         items(app.cast, key = { it.id }) { character ->

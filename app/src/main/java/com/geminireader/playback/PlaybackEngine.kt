@@ -27,6 +27,7 @@ class PlaybackEngine(private val app: ReaderApp) {
     private var playbackBook: Book? = null
     private var playbackChapter = 0
     private var segments = emptyList<Segment>()
+    private var preparedSettings: Settings? = null
     var active by mutableStateOf<Segment?>(null)
     var activeBookId by mutableStateOf("")
     var activeChapter by mutableStateOf(0)
@@ -83,6 +84,16 @@ class PlaybackEngine(private val app: ReaderApp) {
     }
     fun changeSpeed(value: Float) { speed = value; player.playbackParameters = PlaybackParameters(value) }
     fun play(book: Book, chapter: Int, paragraph: Int, resume: Boolean = false) {
+        if (!resume && activeBookId == book.id && activeChapter == chapter && preparedSettings == app.settings) {
+            val ready = segments.indexOfFirst { it.paragraph == paragraph }
+            val uri = if (ready in 0 until player.mediaItemCount) player.getMediaItemAt(ready).localConfiguration?.uri else null
+            if (uri?.path?.let { File(it).exists() } == true) {
+                player.seekTo(ready, 0)
+                if (player.playbackState == Player.STATE_ENDED || player.playbackState == Player.STATE_IDLE) player.prepare()
+                player.play(); persist()
+                return
+            }
+        }
         val saved = if (resume) app.books.position(book.id) else Position(chapter, paragraph)
         stop()
         val gen = generation
@@ -95,6 +106,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                 coroutineScope {
                 val chapterSegments = prepareChapter(book, chapter, settings).filter { it.paragraph > paragraph || (it.paragraph == paragraph && (!resume || it.end > saved.segment)) }
                 segments = chapterSegments
+                preparedSettings = settings
                 require(chapterSegments.isNotEmpty()) { "No text to play" }
                 val direct = speechFor
                 val engine = TtsEngines.create(settings, api)
@@ -116,7 +128,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                     val item = MediaItem.Builder().setUri(file.toURI().toString()).setMediaId("$gen:$index")
                         .setMediaMetadata(MediaMetadata.Builder().setTitle(book.title).setArtist(label).setAlbumTitle(book.chapters[chapter].title).build()).build()
                     player.addMediaItem(item)
-                    if (index == 0) { player.prepare(); if (resume && saved.chapter == chapter) player.seekTo(0, saved.offsetMs); loading = false; if (app.status == "Preparing audio…" || app.status == "Analyzing…") app.status = "" }
+                    if (index == 0) { player.prepare(); if (resume && saved.chapter == chapter) player.seekTo(0, saved.offsetMs); loading = false; if (app.status == "Preparing audio…" || app.status.startsWith("Analyzing")) app.status = "" }
                     else if (wasEnded) { player.seekTo(index, 0); player.prepare() }
                     // Eviction can remove completed items, but never the current/prefetched audio.
                     if (index > settings.prefetch + 2) {

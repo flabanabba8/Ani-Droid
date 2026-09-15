@@ -16,8 +16,11 @@ fun obj(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
 fun str(value: String) = JsonPrimitive(value)
 fun arr(vararg values: JsonElement) = JsonArray(values.toList())
 class ApiFailure(val code: Int, message: String): IOException(message)
-class HttpApi {
-    private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).callTimeout(90, TimeUnit.SECONDS).build()
+class HttpApi(val readTimeoutMs: Long = 120_000, val callTimeoutMs: Long = 150_000) {
+    // A call deadline alone leaves OkHttp's much shorter default socket read timeout active.
+    private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+        .connectTimeout(15, TimeUnit.SECONDS).readTimeout(readTimeoutMs, TimeUnit.MILLISECONDS)
+        .callTimeout(callTimeoutMs, TimeUnit.MILLISECONDS).build()
     private suspend fun execute(request: Request): Response = suspendCancellableCoroutine { continuation ->
         val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
@@ -53,6 +56,9 @@ class HttpApi {
             } catch (e: IOException) {
                 failure = e
                 if (e is ApiFailure && e.code != 429 && e.code < 500) throw e
+                if (e is java.io.InterruptedIOException && attempt >= 1) {
+                    throw IOException("Service timed out after two attempts. Completed analysis batches are saved; retry to resume.", e)
+                }
                 if (attempt < 3) delay(500L shl attempt)
             }
         }

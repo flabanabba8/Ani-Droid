@@ -9,6 +9,20 @@ import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicInteger
 
 class HttpApiTest {
+    @Test fun responseSlowerThanOldDefaultReadTimeoutSucceeds() = runBlocking {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { e ->
+            Thread.sleep(11_000)
+            val bytes = "{}".toByteArray(); e.sendResponseHeaders(200, bytes.size.toLong()); e.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            assertEquals(10_000, okhttp3.OkHttpClient().readTimeoutMillis)
+            val api = HttpApi()
+            assertEquals(120_000L, api.readTimeoutMs)
+            assertEquals(obj(), api.request("http://127.0.0.1:${server.address.port}/", ""))
+        } finally { server.stop(0) }
+    }
     @Test fun retriesRateLimitButNotAuthenticationFailure() = runBlocking {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         val attempts = AtomicInteger()

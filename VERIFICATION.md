@@ -4,6 +4,10 @@ Branch: `gardeneel`. Tests ran on this Ubuntu machine with user-space Temurin JD
 
 ## Build and automated tests
 
+Timeout/chunking follow-up: **39 JVM tests pass**, with `testDebugUnitTest assembleDebug lintDebug`. New coverage includes a response delayed 11 seconds (beyond the old 10-second read timeout), bounded quote batches and ordering, canceled playback waiters sharing analysis, failure cooldown, checkpoint reuse after failure/process restart, analysis-model dropdown filtering and the dark default. Log: `tools/artifacts/chunking-build.log`.
+
+Live follow-up used the user's standalone Chapter 1 EPUB (282 paragraphs, 34,837 characters). Nine batch checkpoints and a final analysis file were saved; the result contains 198 quote assignments. Real Vertex TTS reached `PLAYING`. A paragraph jump during analysis did not cancel the shared analysis; a subsequent jump from paragraph 5 to prepared paragraph 6 retained the existing media queue (active item advanced from 4 to 5 rather than starting a new queue). Inspected `analysis-dropdown-dark.png` showing the model dropdown and dark theme. This confirms functional completion, not an audit of all speaker assignments. The updated APK was installed on ANDROID_DEVICE with `adb install -r`.
+
 `source tools/env.sh && ./gradlew testDebugUnitTest assembleDebug lintDebug` passes.
 
 32 JVM tests pass: 8 importer tests, 7 segmentation/direction tests, 8 audio/API/cache tests, 7 voice-catalog tests, and 2 HTTP integration tests. Coverage includes EPUB spine ordering and intra-document TOC anchors; all text formats; PDF reflow; quote styles, apostrophes and unclosed quotes; unknown-speaker merging; gender-based performance; WAV validation/padding; PCM parsing; cache identity; Vertex project/region routing, explicit user role and bearer/project headers; retrying 429 and not retrying 401. Catalog tests exercise all 30 voices against male/female/unknown characters, stale gender settings, distinct manual overrides, schema choices, cache invalidation and old saved records.

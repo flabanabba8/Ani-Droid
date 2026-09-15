@@ -75,11 +75,15 @@ class ReaderApp : Application() {
     }
     override fun onCreate() {
         super.onCreate(); books = BookRepository(File(filesDir, "books")); settingsStore = SettingsStore(this); playback = PlaybackEngine(this)
-        analyzer = CharacterAnalyzer(books, playback.api)
+        analyzer = CharacterAnalyzer(books, playback.api, scope)
+        analyzer.onProgress = { id, ch, done, total -> scope.launch {
+            if (playback.loading && playback.activeBookId == id && playback.activeChapter == ch)
+                status = "Analyzing chapter: $done/$total batches saved…"
+        } }
         playback.prepareChapter = { readingBook, readingChapter, s ->
             val paragraphs = readingBook.chapters[readingChapter].paragraphs
             val result = if (s.characterMode == "narrator") Analysis() else {
-                status = "Analyzing…"
+                status = "Analyzing chapter (reusing saved/in-progress batches)…"
                 try { analyzer.analyze(readingBook, readingChapter, s) }
                 catch (e: CancellationException) { throw e }
                 catch (e: Exception) { status = "Character analysis unavailable; reading as narrator. ${e.message}"; Analysis() }
@@ -116,8 +120,15 @@ class ReaderApp : Application() {
         for (index in readingBook.chapters.indices) { status = "Analyzing ${index + 1}/${readingBook.chapters.size}…"; analyzer.analyze(readingBook, index, settings) }
         loadCharacters(); status = "Book analysis complete"
     }
+    fun analyzeChapter() = task {
+        val readingBook = book ?: return@task
+        val readingChapter = chapter
+        status = "Analyzing chapter (resuming saved batches)…"
+        analyzer.retry(readingBook, readingChapter, settings)
+        loadCharacters(); status = "Chapter analysis ready"
+    }
     fun savePosition() { val id = book?.id ?: return; val pos = Position(chapter, paragraph); scope.launch(Dispatchers.IO) { books.position(id, pos) } }
-    fun delete(id: String) = task { if (playback.activeBookId == id) playback.stop(); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
+    fun delete(id: String) = task { if (playback.activeBookId == id) playback.stop(); analyzer.cancelBook(id); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
     fun handle(intent: Intent) = task {
         intentMutex.withLock {
         settings = settingsStore.flow.first()

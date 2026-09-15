@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.geminireader.ReaderApp
 import com.geminireader.analysis.VoiceDirector
 import com.geminireader.analysis.VoiceCatalog
+import com.geminireader.analysis.AnalysisModels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -60,7 +61,8 @@ import kotlinx.coroutines.withContext
             item { OutlinedTextField(draft.narratorPrompt, { draft = draft.copy(narratorPrompt = it.take(600)) }, label = { Text("Narrator instructions") }, modifier = Modifier.fillMaxWidth()) }
             item { Choice("Character mode", draft.characterMode, listOf("performance", "distinct", "narrator")) { draft = draft.copy(characterMode = it) } }
             item { Text("Performance: one narrator acts every role. Distinct: separate character voices. Narrator: skip character analysis.", style = MaterialTheme.typography.bodySmall) }
-            item { Field("Analysis model", draft.analysisModel) { draft = draft.copy(analysisModel = it.trim()) } }
+            item { Choice("Analysis model", draft.analysisModel, AnalysisModels.choices(draft.analysisModel, app.models)) { draft = draft.copy(analysisModel = it) } }
+            item { Text("Flash is the default; Flash-Lite favors speed, Pro may take longer. Fetch models adds catalog choices; availability depends on your project and region.", style = MaterialTheme.typography.bodySmall) }
             item { Row { TextButton(onClick = { app.fetchModels(draft); showModels = true }, enabled = !app.busy) { Text("Fetch models") }; if (app.models.isNotEmpty()) TextButton(onClick = { showModels = true }) { Text("Choose model") } } }
             item { Amount("Prefetch segments", draft.prefetch, 1f..8f) { draft = draft.copy(prefetch = it) } }
             item { Amount("Pause within paragraph (ms)", draft.withinPauseMs, 0f..2000f) { draft = draft.copy(withinPauseMs = it) } }
