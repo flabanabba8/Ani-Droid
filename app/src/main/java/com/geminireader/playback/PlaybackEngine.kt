@@ -76,9 +76,9 @@ class PlaybackEngine(private val app: ReaderApp) {
         val position = Position(playbackChapter, segment.paragraph, segment.start, player.currentPosition)
         app.scope.launch(Dispatchers.IO) { app.books.position(id, position) }
     }
-    fun stop() { persist(); generation++; job?.cancel(); complete = false; player.stop(); player.clearMediaItems(); active = null; loading = false; cache.pinned.clear() }
+    fun stop() { persist(); generation++; job?.cancel(); complete = false; player.stop(); player.clearMediaItems(); active = null; activeBookId = ""; playbackBook = null; loading = false; cache.pinned.clear() }
     fun toggle() {
-        if (player.mediaItemCount > 0 || loading) { player.playWhenReady = !player.playWhenReady; persist() }
+        if (activeBookId == app.book?.id && activeChapter == app.chapter && (player.mediaItemCount > 0 || loading)) { player.playWhenReady = !player.playWhenReady; persist() }
         else app.book?.let { play(it, app.chapter, app.paragraph, resume = true) }
     }
     fun changeSpeed(value: Float) { speed = value; player.playbackParameters = PlaybackParameters(value) }
@@ -92,9 +92,11 @@ class PlaybackEngine(private val app: ReaderApp) {
         val settings = app.settings
         job = app.scope.launch {
             try {
-                segments = prepareChapter(book, chapter, settings).filter { it.paragraph > paragraph || (it.paragraph == paragraph && (!resume || it.end > saved.segment)) }
-                require(segments.isNotEmpty()) { "No text to play" }
-                val engine = if (settings.engine == "cloud") CloudTtsClient(api) else GeminiApiTtsClient(api)
+                val chapterSegments = prepareChapter(book, chapter, settings).filter { it.paragraph > paragraph || (it.paragraph == paragraph && (!resume || it.end > saved.segment)) }
+                segments = chapterSegments
+                require(chapterSegments.isNotEmpty()) { "No text to play" }
+                val direct = speechFor
+                val engine = TtsEngines.create(settings, api)
                 val permits = Semaphore(2)
                 val pending = linkedMapOf<Int, Deferred<File>>()
                 var scheduled = 0
@@ -103,7 +105,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                     val ahead = minOf(segments.size, index + settings.prefetch.coerceIn(1, 8))
                     while (scheduled < ahead) {
                         val i = scheduled++
-                        pending[i] = async(Dispatchers.IO) { permits.withPermit { cache.get(speechFor(segments[i], settings, segments.getOrNull(i + 1)?.paragraph != segments[i].paragraph), settings, engine) } }
+                        pending[i] = async(Dispatchers.IO) { permits.withPermit { cache.get(direct(chapterSegments[i], settings, chapterSegments.getOrNull(i + 1)?.paragraph != chapterSegments[i].paragraph), settings, engine) } }
                     }
                     val file = pending.remove(index)!!.await()
                     ensureActive()
@@ -142,8 +144,8 @@ class PlaybackEngine(private val app: ReaderApp) {
         job = app.scope.launch {
             try {
                 val s = app.settings
-                val file = cache.get(speech, s, if (s.engine == "cloud") CloudTtsClient(api) else GeminiApiTtsClient(api))
-                if (gen == generation) { player.setMediaItem(MediaItem.fromUri(file.toURI().toString())); player.prepare(); player.play(); app.status = "Preview ready" }
+                val file = cache.get(speech, s, TtsEngines.create(s, api))
+                if (gen == generation) { player.setMediaItem(MediaItem.Builder().setUri(file.toURI().toString()).setMediaMetadata(MediaMetadata.Builder().setTitle("Voice preview").setArtist(speech.voice).build()).build()); player.prepare(); player.play(); app.status = "Preview ready" }
             } catch (e: CancellationException) { throw e } catch (e: Exception) { app.status = e.message ?: "Preview failed" } finally { loading = false }
         }
     }

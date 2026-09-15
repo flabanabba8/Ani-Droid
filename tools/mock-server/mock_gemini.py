@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 LOCK = threading.Lock()
+LOG_LOCK = threading.Lock()
 AUDIO = {}
 
 
@@ -55,12 +56,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        self.reply({"models": [{"name": "models/mock-analysis"}, {"name": "models/gemini-3.1-flash-tts-preview"}]})
+        field = "publisherModels" if "publishers/google" in self.path else "models"
+        self.reply({field: [{"name": "models/mock-analysis"}, {"name": "models/gemini-3.1-flash-tts-preview"}]})
 
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-            print(json.dumps({"path": self.path, "request": body}, ensure_ascii=False), flush=True)
+            vertex = "/projects/" in self.path
+            if vertex and (not self.headers.get("Authorization", "").startswith("Bearer ") or not self.headers.get("x-goog-user-project")):
+                self.reply({"error": {"message": "Vertex requires bearer token and project header"}}, 401)
+                return
+            with LOG_LOCK:
+                print(json.dumps({"path": self.path, "bearer_auth": self.headers.get("Authorization", "").startswith("Bearer "), "billing_project": self.headers.get("x-goog-user-project"), "request": body}, ensure_ascii=False), flush=True)
             if self.path.endswith("text:synthesize"):
                 import io
                 import wave

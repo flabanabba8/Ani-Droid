@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import android.app.Activity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
@@ -30,23 +32,29 @@ import androidx.compose.ui.unit.sp
 import com.geminireader.ReaderApp
 import com.geminireader.data.BookMeta
 import java.io.File
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable fun ReaderUi(app: ReaderApp) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) app.handle(Intent(Intent.ACTION_VIEW, uri)) }
-    BackHandler(app.screen != "library") { app.screen = "library" }
-    MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xff245b4c), background = Color(0xfffaf8f1), surface = Color(0xfffaf8f1))) {
+    BackHandler(app.screen != "library") { app.screen = if (app.screen == "characters") "reader" else "library" }
+    val dark = app.settings.theme == "dark" || (app.settings.theme == "system" && androidx.compose.foundation.isSystemInDarkTheme())
+    val view = LocalView.current
+    SideEffect { (view.context as? Activity)?.window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = !dark } }
+    MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Color(0xffa2d5bf)) else lightColorScheme(primary = Color(0xff245b4c), background = Color(0xfffaf8f1), surface = Color(0xfffaf8f1))) {
         Scaffold(modifier = Modifier.fillMaxSize(), topBar = {
             Column(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { app.screen = "library" }) { Text("Gemini Reader") }
                     if (app.screen == "library") TextButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Import book") }
+                    TextButton(onClick = { app.screen = "settings" }) { Text("Settings") }
                 }
                 if (app.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         }) { padding ->
             Column(Modifier.padding(padding).fillMaxSize()) {
-                if (app.status.isNotBlank()) Text(app.status, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
-                when { app.screen == "characters" && app.book != null -> CharactersScreen(app)
+                if (app.status.isNotBlank()) Text(app.status, Modifier.fillMaxWidth().clickable { app.status = "" }.background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                when { app.screen == "settings" -> SettingsScreen(app)
+                    app.screen == "characters" && app.book != null -> CharactersScreen(app)
                     app.screen == "reader" && app.book != null -> ReaderScreen(app)
                     else -> LibraryScreen(app) }
             }
@@ -91,6 +99,11 @@ import java.io.File
     val active = playback.active?.takeIf { playback.activeBookId == book.id && playback.activeChapter == app.chapter }
     LaunchedEffect(book.id, app.chapter) { list.scrollToItem(app.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)) }
     LaunchedEffect(active?.paragraph, follow) { if (follow && active != null) list.animateScrollToItem(active.paragraph) }
+    LaunchedEffect(book.id, app.chapter, list) {
+        snapshotFlow { list.firstVisibleItemIndex }.distinctUntilChanged().collect { index ->
+            if (!playback.speaking && !playback.loading) { app.paragraph = index; app.savePosition() }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 20.dp)) {
             Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
@@ -102,7 +115,7 @@ import java.io.File
                 val annotated = buildAnnotatedString {
                     append(text)
                     if (active?.paragraph == index) {
-                        addStyle(SpanStyle(background = Color(0xffe0eaca)), active.start, active.end)
+                        addStyle(SpanStyle(background = Color(0xffe0eaca), color = Color(0xff292817)), active.start, active.end)
                         val offset = (playback.progress * active.text.length).toInt()
                         val sentence = Segmenter.sentences(active.text).firstOrNull { offset in it }
                         if (sentence != null) addStyle(SpanStyle(background = Color(0xffffd982), color = Color(0xff292817)), active.start + sentence.first, active.start + sentence.last + 1)
@@ -110,12 +123,12 @@ import java.io.File
                 }
                 Text(annotated, Modifier.fillMaxWidth().combinedClickable(onClick = { app.paragraph = index; playback.play(book, app.chapter, index) }, onLongClick = {
                     inspecting = active?.takeIf { it.paragraph == index } ?: Segmenter.dialogue(chapter.paragraphs).firstOrNull { it.paragraph == index && it.q != null } ?: Segment(index, 0, text.length, text)
-                }), fontFamily = FontFamily.Serif, fontSize = 20.sp, lineHeight = 30.sp)
+                }), fontFamily = FontFamily.Serif, fontSize = app.settings.fontSize.sp, lineHeight = (app.settings.fontSize * 1.5f).sp)
             }
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Button(onClick = { playback.toggle() }) { Text(if (playback.player.playWhenReady && (playback.speaking || playback.loading || playback.player.mediaItemCount > 0)) "Pause" else "Play") }
+            Button(onClick = { playback.toggle() }) { Text(if (playback.activeBookId == book.id && playback.activeChapter == app.chapter && playback.player.playWhenReady && (playback.speaking || playback.loading || playback.player.mediaItemCount > 0)) "Pause" else "Play") }
             TextButton(onClick = { playback.changeSpeed(if (playback.speed >= 2f) .75f else playback.speed + .25f) }) { Text("${playback.speed}×") }
             TextButton(onClick = { follow = !follow }) { Text(if (follow) "Follow on" else "Follow off") }
         }

@@ -12,6 +12,9 @@ import com.geminireader.playback.PlaybackEngine
 import com.geminireader.analysis.*
 import com.geminireader.analysis.Character
 import com.geminireader.text.*
+import com.geminireader.tts.*
+import kotlinx.serialization.json.*
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import kotlinx.coroutines.*
 import java.io.File
 
@@ -31,6 +34,38 @@ class ReaderApp : Application() {
     lateinit var analyzer: CharacterAnalyzer
     var cast by mutableStateOf(emptyList<Character>())
     var analysis by mutableStateOf(Analysis())
+    var models by mutableStateOf(emptyList<String>())
+    fun validateSettings(value: Settings): Settings {
+        require(value.model.matches(Regex("[a-zA-Z0-9._/-]+")) && value.analysisModel.matches(Regex("[a-zA-Z0-9._/-]+"))) { "Enter valid model names" }
+        require(value.narratorVoice in VoiceDirector.female + VoiceDirector.male) { "Select a supported narrator voice" }
+        require(value.engine in listOf("vertex", "cloud", "gemini")) { "Select a supported engine" }
+        if (value.engine == "vertex" && value.vertexProject.isNotBlank()) VertexEndpoint.generate(value, value.model)
+        for (url in listOf(value.cloudUrl, value.geminiUrl, value.vertexUrl).filter { it.isNotBlank() }) {
+            val parsed = url.toHttpUrl()
+            require(parsed.username.isEmpty() && parsed.password.isEmpty() && parsed.query == null && parsed.fragment == null) { "Base URLs must not contain credentials, queries or fragments" }
+            require(parsed.isHttps || (BuildConfig.DEBUG && parsed.host in listOf("10.0.2.2", "127.0.0.1", "localhost"))) { "Use HTTPS (debug mock allows loopback HTTP)" }
+        }
+        return value.copy(prefetch = value.prefetch.coerceIn(1,8), withinPauseMs = value.withinPauseMs.coerceIn(0,2000), paragraphPauseMs = value.paragraphPauseMs.coerceIn(0,5000), fontSize = value.fontSize.coerceIn(14,32), cacheMb = value.cacheMb.coerceIn(32,2048))
+    }
+    fun saveSettings(value: Settings, test: Boolean = false) = task {
+        val valid = validateSettings(value); playback.stop(); settingsStore.save(valid); settings = valid; status = "Settings saved"
+        if (test) playback.preview(Speech("Hello. Your reader is ready for the next chapter.", valid.narratorPrompt, valid.narratorVoice))
+    }
+    fun fetchModels(value: Settings) = task {
+        val valid = validateSettings(value)
+        val names = mutableListOf<String>(); var next = ""
+        do {
+            val vertex = valid.engine == "vertex"
+            val endpoint = if (vertex) "${VertexEndpoint.base(valid)}/v1beta1/publishers/google/models" else "${valid.geminiUrl.trimEnd('/')}/v1beta/models"
+            val url = endpoint.toHttpUrl().newBuilder().addQueryParameter("pageSize", "100")
+            if (next.isNotEmpty()) url.addQueryParameter("pageToken", next)
+            if (vertex) { VertexEndpoint.generate(valid, valid.analysisModel); require(valid.vertexToken.isNotBlank()) { "Enter a Vertex OAuth token first" } }
+            val response = playback.api.request(url.build().toString(), if (vertex) "" else valid.geminiKey.ifBlank { valid.apiKey }, token = if (vertex) valid.vertexToken else "", project = if (vertex) valid.vertexProject else "")
+            names += (response["publisherModels"] ?: response["models"])?.jsonArray.orEmpty().mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.content?.substringAfterLast('/') }
+            next = response["nextPageToken"]?.jsonPrimitive?.content.orEmpty()
+        } while (next.isNotBlank() && names.size < 1000)
+        models = names.distinct().sorted(); status = "Fetched ${models.size} models"
+    }
     override fun onCreate() {
         super.onCreate(); books = BookRepository(File(filesDir, "books")); settingsStore = SettingsStore(this); playback = PlaybackEngine(this)
         analyzer = CharacterAnalyzer(books, playback.api)
@@ -79,7 +114,7 @@ class ReaderApp : Application() {
     fun handle(intent: Intent) = task {
         if (BuildConfig.DEBUG && intent.hasExtra("debug_mock")) {
             val url = intent.getStringExtra("debug_mock")!!
-            settings = settings.copy(apiKey = "mock", geminiKey = "mock", cloudUrl = url, geminiUrl = url, engine = intent.getStringExtra("debug_engine") ?: "cloud")
+            settings = settings.copy(apiKey = "mock", geminiKey = "mock", oauthToken = "", project = "", cloudUrl = url, geminiUrl = url, vertexUrl = url, vertexProject = "mock-project", vertexToken = "mock", engine = intent.getStringExtra("debug_engine") ?: "vertex")
             settingsStore.save(settings)
         }
         @Suppress("DEPRECATION")

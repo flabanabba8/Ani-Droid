@@ -12,7 +12,8 @@ class AudioCache(private val root: File) {
     init { root.mkdirs() }
     companion object {
         fun key(speech: Speech, s: Settings): String {
-            val fields = listOf("pcm-v1", s.engine, if (s.engine == "cloud") s.cloudUrl else s.geminiUrl, s.model, speech.voice, s.language, speech.prompt, speech.text, speech.pauseMs.toString())
+            val endpoint = when (s.engine) { "vertex" -> "${s.vertexUrl}|${s.vertexProject}|${s.vertexLocation}"; "cloud" -> s.cloudUrl; else -> s.geminiUrl }
+            val fields = listOf("pcm-v1", s.engine, endpoint, s.model, speech.voice, s.language, speech.prompt, speech.text, speech.pauseMs.toString())
             return MessageDigest.getInstance("SHA-256").digest(fields.joinToString("") { "${it.length}:$it" }.toByteArray()).joinToString("") { "%02x".format(it) }
         }
     }

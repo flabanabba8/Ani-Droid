@@ -9,7 +9,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class Settings(
     val apiKey: String = "", val geminiKey: String = "", val oauthToken: String = "", val project: String = "",
-    val engine: String = "cloud", val model: String = "gemini-3.1-flash-tts-preview",
+    val engine: String = "vertex", val model: String = "gemini-3.1-flash-tts-preview",
+    val vertexProject: String = "", val vertexLocation: String = "us-central1", val vertexToken: String = "", val vertexUrl: String = "",
     val analysisModel: String = "gemini-2.5-flash", val language: String = "en-US",
     val narratorVoice: String = "Charon", val narratorGender: String = "male",
     val narratorPrompt: String = "Read with warmth, clarity and natural pacing.",

@@ -20,9 +20,15 @@ class CharacterAnalyzer(private val books: BookRepository, private val api: Http
     private val mutex = Mutex()
     fun cast(id: String): List<Character> = runCatching { json.decodeFromString<List<Character>>(File(books.directory(id), "cast.json").readText()) }.getOrDefault(emptyList())
     fun saveCast(id: String, cast: List<Character>) = atomicWrite(File(books.directory(id), "cast.json"), json.encodeToString(cast))
-    fun cached(id: String, chapter: Int): Analysis? = runCatching { json.decodeFromString<Analysis>(File(books.directory(id), "analysis/$chapter.json").readText()) }.getOrNull()
+    private fun overrides(id: String, chapter: Int): Map<String, String> = runCatching { json.decodeFromString<Map<String, String>>(File(books.directory(id), "analysis/$chapter-overrides.json").readText()) }.getOrDefault(emptyMap())
+    private fun applyOverrides(id: String, chapter: Int, value: Analysis): Analysis {
+        val overrides = overrides(id, chapter)
+        return value.copy(lines = value.lines.filter { it.q !in overrides } + overrides.map { Attribution(it.key, it.value) })
+    }
+    fun cached(id: String, chapter: Int): Analysis? = runCatching { applyOverrides(id, chapter, json.decodeFromString<Analysis>(File(books.directory(id), "analysis/$chapter.json").readText())) }.getOrNull()
     fun reassign(id: String, chapter: Int, q: String, speaker: String) {
         val previous = cached(id, chapter) ?: Analysis()
+        atomicWrite(File(books.directory(id), "analysis/$chapter-overrides.json"), json.encodeToString(overrides(id, chapter) + (q to speaker)))
         atomicWrite(File(books.directory(id), "analysis/$chapter.json"), json.encodeToString(previous.copy(lines = previous.lines.filter { it.q != q } + Attribution(q, speaker))))
     }
     companion object {
@@ -50,7 +56,8 @@ class CharacterAnalyzer(private val books: BookRepository, private val api: Http
     suspend fun analyze(book: Book, chapter: Int, settings: Settings, force: Boolean = false): Analysis = mutex.withLock {
         withContext(Dispatchers.IO) {
             val paragraphs = book.chapters[chapter].paragraphs
-            val fingerprint = MessageDigest.getInstance("SHA-256").digest(("v1|${settings.analysisModel}|${settings.geminiUrl}|${settings.narratorGender}|" + paragraphs.joinToString("\n")).toByteArray()).joinToString("") { "%02x".format(it) }
+            val backend = if (settings.engine == "vertex") "vertex|${settings.vertexProject}|${settings.vertexLocation}|${settings.vertexUrl}" else settings.geminiUrl
+            val fingerprint = MessageDigest.getInstance("SHA-256").digest(("v1|${settings.analysisModel}|$backend|${settings.narratorGender}|" + paragraphs.joinToString("\n")).toByteArray()).joinToString("") { "%02x".format(it) }
             cached(book.id, chapter)?.takeIf { !force && it.fingerprint == fingerprint }?.let { return@withContext it }
             val segments = Segmenter.dialogue(paragraphs)
             val validQ = segments.mapNotNull { it.q }.toSet()
@@ -64,7 +71,8 @@ EXCERPT:
 $chunk"""
                 val content = obj("parts" to arr(obj("text" to str(prompt))))
                 val request = obj("contents" to arr(content), "generationConfig" to obj("responseMimeType" to str("application/json"), "responseSchema" to schema))
-                val response = api.request("${settings.geminiUrl.trimEnd('/')}/v1beta/models/${settings.analysisModel.removePrefix("models/")}:generateContent", settings.geminiKey.ifBlank { settings.apiKey }, request)
+                val response = if (settings.engine == "vertex") VertexEndpoint.request(api, settings, settings.analysisModel, request)
+                    else api.request("${settings.geminiUrl.trimEnd('/')}/v1beta/models/${settings.analysisModel.removePrefix("models/")}:generateContent", settings.geminiKey.ifBlank { settings.apiKey }, request)
                 val text = response["candidates"]?.jsonArray?.firstOrNull()?.jsonObject?.get("content")?.jsonObject?.get("parts")?.jsonArray?.joinToString("") { it.jsonObject["text"]?.jsonPrimitive?.content.orEmpty() } ?: error("Analysis returned no text")
                 val analyzed = json.decodeFromString<Analysis>(text.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
                 val mapping = mutableMapOf<String, String>()
@@ -77,7 +85,7 @@ $chunk"""
                 }
                 lines += analyzed.lines.filter { it.q in validQ }.map { it.copy(speaker = mapping[it.speaker] ?: it.speaker) }
             }
-            val result = Analysis(roster, lines.distinctBy { it.q }, fingerprint)
+            val result = applyOverrides(book.id, chapter, Analysis(roster, lines.distinctBy { it.q }, fingerprint))
             saveCast(book.id, roster)
             atomicWrite(File(books.directory(book.id), "analysis/$chapter.json"), json.encodeToString(result))
             result

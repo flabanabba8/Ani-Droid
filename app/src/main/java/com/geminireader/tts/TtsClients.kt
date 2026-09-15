@@ -10,13 +10,22 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.Base64
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resumeWithException
 
 fun obj(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
 fun str(value: String) = JsonPrimitive(value)
 fun arr(vararg values: JsonElement) = JsonArray(values.toList())
 class ApiFailure(val code: Int, message: String): IOException(message)
 class HttpApi {
-    private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).callTimeout(90, TimeUnit.SECONDS).build()
+    private suspend fun execute(request: Request): Response = suspendCancellableCoroutine { continuation ->
+        val call = client.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) { if (continuation.isActive) continuation.resumeWithException(e) }
+            override fun onResponse(call: Call, response: Response) { continuation.resume(response) { _, value, _ -> value.close() } }
+        })
+    }
     suspend fun request(url: String, key: String, body: JsonObject? = null, token: String = "", project: String = ""): JsonObject = withContext(Dispatchers.IO) {
         var failure: Exception? = null
         for (attempt in 0..3) {
@@ -26,7 +35,7 @@ class HttpApi {
                 if (token.isNotBlank()) request.header("Authorization", "Bearer $token") else if (key.isNotBlank()) request.header("x-goog-api-key", key)
                 if (project.isNotBlank()) request.header("x-goog-user-project", project)
                 if (body != null) request.post(body.toString().toRequestBody("application/json".toMediaType()))
-                client.newCall(request.build()).execute().use { response ->
+                execute(request.build()).use { response ->
                     val text = response.body.string()
                     if (!response.isSuccessful) {
                         val message = when (response.code) {
@@ -52,6 +61,36 @@ class HttpApi {
 }
 data class Speech(val text: String, val prompt: String, val voice: String, val pauseMs: Int = 350)
 interface TtsEngine { suspend fun synthesize(speech: Speech, settings: Settings): Pcm }
+object TtsEngines {
+    fun create(settings: Settings, api: HttpApi): TtsEngine = when (settings.engine) {
+        "vertex" -> VertexTtsClient(api)
+        "cloud" -> CloudTtsClient(api)
+        "gemini" -> GeminiApiTtsClient(api)
+        else -> error("Select a supported speech engine")
+    }
+}
+object VertexEndpoint {
+    fun base(s: Settings): String = s.vertexUrl.trimEnd('/').ifBlank { if (s.vertexLocation == "global") "https://aiplatform.googleapis.com" else "https://${s.vertexLocation}-aiplatform.googleapis.com" }
+    fun generate(s: Settings, model: String): String {
+        require(s.vertexProject.matches(Regex("[a-zA-Z0-9-]+"))) { "Enter your Vertex Google Cloud project ID in Settings" }
+        require(s.vertexLocation.matches(Regex("[a-z0-9-]+"))) { "Enter a Vertex region, for example us-central1" }
+        require(model.removePrefix("models/").matches(Regex("[a-zA-Z0-9._-]+"))) { "Invalid Vertex model name" }
+        return "${base(s)}/v1beta1/projects/${s.vertexProject}/locations/${s.vertexLocation}/publishers/google/models/${model.removePrefix("models/")}:generateContent"
+    }
+    suspend fun request(api: HttpApi, s: Settings, model: String, body: JsonObject): JsonObject {
+        require(s.vertexToken.isNotBlank()) { "Enter a Vertex OAuth access token in Settings" }
+        return api.request(generate(s, model), "", body, s.vertexToken, s.vertexProject)
+    }
+}
+class VertexTtsClient(private val api: HttpApi): TtsEngine {
+    override suspend fun synthesize(speech: Speech, settings: Settings): Pcm {
+        repeat(2) { attempt ->
+            val response = VertexEndpoint.request(api, settings, settings.model, GeminiApiTtsClient.body(speech))
+            try { return ApiAudio.gemini(response) } catch (e: IllegalStateException) { if (attempt == 1) throw e; delay(500) }
+        }
+        error("Vertex returned no audio")
+    }
+}
 object ApiAudio {
     fun cloud(response: JsonObject): Pcm = Wav.decode(Base64.getDecoder().decode(response["audioContent"]?.jsonPrimitive?.content ?: error("Cloud returned no audio")))
     fun gemini(response: JsonObject): Pcm {

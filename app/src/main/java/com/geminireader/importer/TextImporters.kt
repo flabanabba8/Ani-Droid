@@ -50,11 +50,14 @@ object TextImporters {
     }
     fun html(text: String): List<String> {
         val doc = Jsoup.parse(text)
+        return htmlBlocks(doc).map { it.text().trim() }.filter { it.isNotBlank() }
+            .ifEmpty { listOf(doc.body().text()).filter { it.isNotBlank() } }
+    }
+    private fun htmlBlocks(doc: org.jsoup.nodes.Document): List<Element> {
         doc.select("script,style,nav,noscript,svg").remove()
         val blocks = "p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,div"
         return doc.body().select(blocks).filter { it.select(blocks).none { child -> child !== it } }
-            .map { it.text().trim() }.filter { it.isNotBlank() }
-            .ifEmpty { listOf(doc.body().text()).filter { it.isNotBlank() } }
+            .filter { it.text().isNotBlank() }
     }
     fun reflow(text: String): List<String> = text.replace("\r\n", "\n").replace('\r', '\n')
         .replace(Regex("(?<=\\p{L})-\\n(?=\\p{Ll})"), "")
@@ -112,6 +115,7 @@ object TextImporters {
         val files = zip(bytes)
         fun xml(path: String) = Jsoup.parse(decode(files[path] ?: error("EPUB is missing $path")), "", Parser.xmlParser())
         fun resolve(base: String, path: String): String = URI(base).resolve(path.substringBefore('#')).normalize().path.removePrefix("/")
+        fun reference(base: String, href: String): String = resolve(base, href) + if ('#' in href) "#${href.substringAfter('#')}" else ""
         val opfPath = xml("META-INF/container.xml").local("rootfile").firstOrNull()?.attr("full-path") ?: error("EPUB has no rootfile")
         val opf = xml(opfPath)
         val manifest = opf.local("item").associateBy { it.attr("id") }
@@ -122,16 +126,31 @@ object TextImporters {
             val path = resolve(opfPath, item.attr("href"))
             runCatching {
                 val nav = xml(path)
-                nav.local("a").forEach { navTitles.putIfAbsent(resolve(path, it.attr("href")), it.text()) }
-                nav.local("navPoint").forEach { point -> point.local("content").firstOrNull()?.let { navTitles.putIfAbsent(resolve(path, it.attr("src")), point.local("navLabel").firstOrNull()?.text().orEmpty()) } }
+                val toc = nav.local("nav").firstOrNull { it.attr("epub:type").split(' ').contains("toc") } ?: nav
+                toc.local("a").forEach { navTitles.putIfAbsent(reference(path, it.attr("href")), it.text()) }
+                nav.local("navPoint").forEach { point -> point.local("content").firstOrNull()?.let { navTitles.putIfAbsent(reference(path, it.attr("src")), point.local("navLabel").firstOrNull()?.text().orEmpty()) } }
             }
         }
-        val chapters = opf.local("itemref").filter { it.attr("linear") != "no" }.mapNotNull { ref ->
-            val item = manifest[ref.attr("idref")] ?: return@mapNotNull null
+        val chapters = opf.local("itemref").filter { it.attr("linear") != "no" }.flatMap { ref ->
+            val item = manifest[ref.attr("idref")] ?: return@flatMap emptyList()
             val path = resolve(opfPath, item.attr("href"))
             val text = decode(files[path] ?: error("EPUB chapter is missing: $path"))
-            val paragraphs = html(text)
-            if (paragraphs.isEmpty()) null else Chapter(navTitles[path].orEmpty().ifBlank { Jsoup.parse(text).selectFirst("h1,h2,h3")?.text().orEmpty().ifBlank { "Section ${ref.elementSiblingIndex() + 1}" } }, paragraphs)
+            val doc = Jsoup.parse(text)
+            val blocks = htmlBlocks(doc)
+            val elements = doc.getAllElements().withIndex().associate { it.value to it.index }
+            val boundaries = sortedMapOf<Int, String>()
+            navTitles.filterKeys { it.substringBefore('#') == path }.forEach { (link, heading) ->
+                if ('#' !in link) boundaries.putIfAbsent(0, heading)
+                else doc.getElementById(link.substringAfter('#'))?.let { target ->
+                    val index = blocks.indexOfFirst { block -> target in block.getAllElements() || elements.getValue(block) >= elements.getValue(target) }
+                    if (index >= 0) boundaries.putIfAbsent(index, heading)
+                }
+            }
+            if (blocks.isEmpty()) emptyList() else {
+                boundaries.putIfAbsent(0, doc.selectFirst("h1,h2,h3")?.text().orEmpty().ifBlank { "Section ${ref.elementSiblingIndex() + 1}" })
+                val starts = boundaries.entries.toList()
+                starts.mapIndexed { index, entry -> Chapter(entry.value, blocks.subList(entry.key, starts.getOrNull(index + 1)?.key ?: blocks.size).map { it.text() }) }
+            }
         }
         val coverId = opf.local("meta").firstOrNull { it.attr("name") == "cover" }?.attr("content")
         val coverItem = manifest.values.firstOrNull { it.attr("properties").contains("cover-image") } ?: manifest[coverId]

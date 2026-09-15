@@ -16,6 +16,11 @@ class ImporterTest {
         assertEquals(listOf("First", "One"), book.chapters.first().paragraphs)
     }
     @Test fun htmlDoesNotDuplicateNestedBlocks() { assertEquals(listOf("Hello world", "Next"), TextImporters.html("<div><p>Hello <b>world</b></p><p>Next</p></div><script>bad()</script>")) }
+    @Test fun epubSplitsNavAnchorsWithinOneSpineDocument() {
+        val bytes = archive(mapOf("META-INF/container.xml" to "<container><rootfile full-path='OPS/book.opf'/></container>", "OPS/book.opf" to "<package><manifest><item id='a' href='a.xhtml'/><item id='nav' href='nav.xhtml' properties='nav'/></manifest><spine><itemref idref='a'/></spine></package>", "OPS/nav.xhtml" to "<nav epub:type='toc'><a href='a.xhtml#one'>First chapter</a><a href='a.xhtml#two'>Second chapter</a></nav>", "OPS/a.xhtml" to "<h1 id='one'>One</h1><p>A</p><h1 id='two'>Two</h1><p>B</p>"))
+        val chapters = TextImporters.parse("x.epub", bytes).book.chapters
+        assertEquals(listOf("First chapter", "Second chapter"), chapters.map { it.title }); assertEquals(listOf("Two", "B"), chapters[1].paragraphs)
+    }
     @Test fun pdfReflowPreservesParagraphsAndDehyphenates() { assertEquals(listOf("The extraordinary line continues.", "New paragraph."), TextImporters.reflow("The extra-\nordinary line\ncontinues.\n\nNew paragraph.")) }
     @Test fun docxPreservesRuns() { val data = archive(mapOf("word/document.xml" to "<w:document><w:p><w:r><w:t>Hello </w:t></w:r><w:r><w:t>world</w:t></w:r></w:p></w:document>")); assertEquals("Hello world", TextImporters.parse("x.docx", data).book.chapters[0].paragraphs[0]) }
     @Test fun fb2ReadsSections() { val book = TextImporters.parse("x.fb2", "<FictionBook><description><book-title>Fable</book-title></description><body><section><title><p>One</p></title><p>A story.</p></section></body></FictionBook>".toByteArray()).book; assertEquals("Fable", book.title); assertEquals("A story.", book.chapters[0].paragraphs.last()) }

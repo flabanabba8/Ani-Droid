@@ -31,7 +31,12 @@ class AudioTest {
         val key = AudioCache.key(speech, Settings())
         assertNotEquals(key, AudioCache.key(speech.copy(prompt = "Sadly"), Settings()))
         assertNotEquals(key, AudioCache.key(speech.copy(pauseMs = 80), Settings()))
-        assertNotEquals(key, AudioCache.key(speech, Settings(cloudUrl = "http://10.0.2.2:8765")))
+        assertNotEquals(key, AudioCache.key(speech, Settings(vertexUrl = "http://10.0.2.2:8765")))
+    }
+    @Test fun vertexRoutesToCreditsProjectAndRegion() {
+        val s = Settings(vertexProject = "my-credits", vertexLocation = "us-central1")
+        assertEquals("https://us-central1-aiplatform.googleapis.com/v1beta1/projects/my-credits/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent", VertexEndpoint.generate(s, "gemini-2.5-flash"))
+        assertEquals("https://aiplatform.googleapis.com", VertexEndpoint.base(s.copy(vertexLocation = "global")))
     }
     @Test fun longUnicodeTextFitsCloudLimitsWithoutLostText() {
         val text = "文".repeat(3000) + "😄".repeat(1000)
