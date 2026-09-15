@@ -41,6 +41,8 @@ import kotlinx.coroutines.withContext
             Button(onClick = { app.saveSettings(draft) }, enabled = !app.busy) { Text("Save") }
         }
         LazyColumn(Modifier.weight(1f).imePadding(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item { Choice("Appearance", draft.theme, listOf("dark", "light", "system")) { draft = draft.copy(theme = it); app.setTheme(it) } }
+            item { Text("Appearance changes apply immediately and are saved automatically.", style = MaterialTheme.typography.bodySmall) }
             item { Choice("Speech engine", draft.engine, listOf("vertex", "cloud", "gemini")) { draft = draft.copy(engine = it) } }
             if (draft.engine == "vertex") {
                 item { Text("Vertex AI · speech and analysis use this project", style = MaterialTheme.typography.titleMedium) }
@@ -68,7 +70,6 @@ import kotlinx.coroutines.withContext
             item { Amount("Pause within paragraph (ms)", draft.withinPauseMs, 0f..2000f) { draft = draft.copy(withinPauseMs = it) } }
             item { Amount("Pause between paragraphs (ms)", draft.paragraphPauseMs, 0f..5000f) { draft = draft.copy(paragraphPauseMs = it) } }
             item { Amount("Reader font size", draft.fontSize, 14f..32f) { draft = draft.copy(fontSize = it) } }
-            item { Choice("Theme", draft.theme, listOf("light", "dark", "system")) { draft = draft.copy(theme = it) } }
             item { Amount("Audio cache (MB)", draft.cacheMb, 32f..2048f) { draft = draft.copy(cacheMb = it) } }
             item { TextButton(onClick = { app.task { app.playback.stop(); withContext(Dispatchers.IO) { app.playback.cache.clear() }; app.status = "Audio cache cleared" } }) { Text("Clear audio cache") } }
             item { Text("Advanced", style = MaterialTheme.typography.titleLarge) }

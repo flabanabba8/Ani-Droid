@@ -51,6 +51,11 @@ class ReaderApp : Application() {
         }
         return value.copy(prefetch = value.prefetch.coerceIn(1,8), withinPauseMs = value.withinPauseMs.coerceIn(0,2000), paragraphPauseMs = value.paragraphPauseMs.coerceIn(0,5000), fontSize = value.fontSize.coerceIn(14,32), cacheMb = value.cacheMb.coerceIn(32,2048))
     }
+    fun setTheme(theme: String) = task {
+        require(theme in listOf("dark", "light", "system"))
+        val updated = settings.copy(theme = theme)
+        settingsStore.save(updated); settings = updated
+    }
     fun saveSettings(value: Settings, test: Boolean = false) = task {
         val valid = validateSettings(value); playback.stop(); settingsStore.save(valid); settings = valid; status = "Settings saved"
         if (test) {

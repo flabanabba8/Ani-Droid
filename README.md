@@ -120,7 +120,7 @@ To use the host mock from the phone, select that device with `export ANDROID_SER
 - Tapping a paragraph already in the prepared queue seeks directly without restarting analysis or discarding the queue. Other jumps reuse completed audio and shared in-progress analysis, but may still need to generate uncached speech. Unfinished TTS requests outside the retained queue can be canceled by a restart. A recently failed analysis is held for 30 seconds to avoid repeated requests on every tap; the chapter retry button bypasses that cooldown while preserving checkpoints.
 - Analysis now survives cancellation of a playback waiter during a jump and finishes saving the requested chapter. Deleting the book cancels its analysis. Changing voice/model/backend creates separate cache identities.
 - The HTTP client explicitly allows 120 seconds without response data and a 150-second total call deadline; timeouts get at most one retry. The old client inadvertently retained a 10-second socket read timeout despite a longer overall deadline.
-- New installs default to dark mode. Existing theme choices remain saved and can be changed in Settings.
+- New installs default to dark mode. Existing theme choices remain saved. **Settings → Appearance** is the first setting; dark/light/system changes apply and save immediately without stopping playback or needing the Save button.
 
 ## Limits and verification
 
