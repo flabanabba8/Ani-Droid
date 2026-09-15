@@ -9,6 +9,7 @@ import com.geminireader.ui.ReaderUi
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
         val app = application as ReaderApp
         setContent { ReaderUi(app) }
         if (savedInstanceState == null) app.handle(intent)

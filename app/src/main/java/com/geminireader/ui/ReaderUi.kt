@@ -19,6 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import com.geminireader.text.Segmenter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.geminireader.ReaderApp
@@ -77,7 +80,11 @@ import java.io.File
     val chapter = book.chapters[app.chapter]
     var toc by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
+    var follow by remember { mutableStateOf(true) }
+    val playback = app.playback
+    val active = playback.active?.takeIf { playback.activeBookId == book.id && playback.activeChapter == app.chapter }
     LaunchedEffect(book.id, app.chapter) { list.scrollToItem(app.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)) }
+    LaunchedEffect(active?.paragraph, follow) { if (follow && active != null) list.animateScrollToItem(active.paragraph) }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 20.dp)) {
             Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
@@ -85,10 +92,25 @@ import java.io.File
         }
         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             itemsIndexed(chapter.paragraphs) { index, text ->
-                Text(text, Modifier.fillMaxWidth().clickable { app.paragraph = index; app.savePosition() }, fontFamily = FontFamily.Serif, fontSize = 20.sp, lineHeight = 30.sp)
+                val annotated = buildAnnotatedString {
+                    append(text)
+                    if (active?.paragraph == index) {
+                        addStyle(SpanStyle(background = Color(0xffe0eaca)), active.start, active.end)
+                        val offset = (playback.progress * active.text.length).toInt()
+                        val sentence = Segmenter.sentences(active.text).firstOrNull { offset in it }
+                        if (sentence != null) addStyle(SpanStyle(background = Color(0xffffd982), color = Color(0xff292817)), active.start + sentence.first, active.start + sentence.last + 1)
+                    }
+                }
+                Text(annotated, Modifier.fillMaxWidth().clickable { app.paragraph = index; playback.play(book, app.chapter, index) }, fontFamily = FontFamily.Serif, fontSize = 20.sp, lineHeight = 30.sp)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Button(onClick = { playback.toggle() }) { Text(if (playback.player.playWhenReady && (playback.speaking || playback.loading || playback.player.mediaItemCount > 0)) "Pause" else "Play") }
+            TextButton(onClick = { playback.changeSpeed(if (playback.speed >= 2f) .75f else playback.speed + .25f) }) { Text("${playback.speed}×") }
+            TextButton(onClick = { follow = !follow }) { Text(if (follow) "Follow on" else "Follow off") }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { app.selectChapter(app.chapter - 1) }, enabled = app.chapter > 0) { Text("Previous") }
             TextButton(onClick = { app.selectChapter(app.chapter + 1) }, enabled = app.chapter < book.chapters.lastIndex) { Text("Next chapter") }
         }
