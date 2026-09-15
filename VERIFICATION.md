@@ -6,7 +6,7 @@ Branch: `gardeneel`. Tests ran on this Ubuntu machine with user-space Temurin JD
 
 `source tools/env.sh && ./gradlew testDebugUnitTest assembleDebug lintDebug` passes.
 
-25 JVM tests pass: 8 importer tests, 7 segmentation/direction tests, 8 audio/API/cache tests, and 2 HTTP integration tests. Coverage includes EPUB spine ordering and intra-document TOC anchors; all text formats; PDF reflow; quote styles, apostrophes and unclosed quotes; unknown-speaker merging; gender-based performance; WAV validation/padding; PCM parsing; cache identity; Vertex project/region routing, explicit user role and bearer/project headers; retrying 429 and not retrying 401.
+32 JVM tests pass: 8 importer tests, 7 segmentation/direction tests, 8 audio/API/cache tests, 7 voice-catalog tests, and 2 HTTP integration tests. Coverage includes EPUB spine ordering and intra-document TOC anchors; all text formats; PDF reflow; quote styles, apostrophes and unclosed quotes; unknown-speaker merging; gender-based performance; WAV validation/padding; PCM parsing; cache identity; Vertex project/region routing, explicit user role and bearer/project headers; retrying 429 and not retrying 401. Catalog tests exercise all 30 voices against male/female/unknown characters, stale gender settings, distinct manual overrides, schema choices, cache invalidation and old saved records.
 
 `python3 tools/mock-server/test_mock.py` passes. All shell scripts pass `bash -n`; Python helpers compile. `git diff --check` passes. Android lint has no errors; remaining warnings include the deliberate API 36 target and third-party PDFBox/Bouncy Castle code. The app's HTTP clients use OkHttp's default certificate verification.
 
@@ -32,6 +32,8 @@ The headless emulator mutes host audio. These checks verify generated PCM/WAV, A
 
 ### Live Vertex follow-up
 
+Voice-catalog update: researched all 30 voice gender labels and traits from official Google sources (see `docs/voices.md`). `testDebugUnitTest assembleDebug lintDebug` passed; mock tests also passed. Real Vertex analysis on the short test story returned Autonoe (female, bright) for Alice and Algieba (male, smooth) for Captain Reed, with all four quote assignments. Performance-mode playback retained Charon and Android reported `PLAYING` with Alice metadata. Inspected `voice-catalog-live.png` for highlighting and `voice-catalog-characters.png` for recommendations versus the active narrator. The catalog is research-based: individual listening tests of all 30 voices were not performed. Build log: `voice-catalog-build.log`.
+
 - Connected over SSH to `USER@BROKER_HOST` (BROKER_HOST). Used its user Application Default Credentials, not its unrelated active CLI service account. Long-lived refresh credentials remain on the BROKER_HOST; only a short-lived access token entered the emulator's private settings.
 - Project `YOUR_PROJECT_ID`, region `us-central1`: real `gemini-2.5-flash` text request returned HTTP 200; real `gemini-3.1-flash-tts-preview` with Charon returned HTTP 200 and 178,560 bytes of 24 kHz mono PCM for a short connection test.
 - The first real TTS request rejected the absent content role. Added explicit `role: user` to speech and analysis requests and a regression test.
@@ -55,6 +57,6 @@ Screenshots listed above were opened and inspected, not merely captured. Early l
 
 Live Vertex authentication and the two default models are verified for the project/region above, but billing-credit application, sustained quota, broad LLM attribution accuracy, and subjective character voice quality remain unverified. Optional Cloud TTS API-key support remains uncertain; the optional Cloud engine provides OAuth token/project settings. Gemini's Interactions fallback is contract-tested against the mock, not a live service. Vertex mode stays on Vertex.
 
-Physical-phone wireless adb installation is documented but no phone was available. OAuth refresh on Android is not implemented; replace expired access tokens in Settings. Highlight timing is estimated per sentence. Scanned PDF OCR, DRM and MOBI/AZW3 are outside scope.
+Physical-phone wireless adb pairing, installation and the voice-catalog update succeeded on ANDROID_DEVICE (`ANDROID_MODEL`, `LOCAL_DEVICE_ADDRESS`). Its existing books/settings were preserved through `adb install -r`; the app was launched afterward. Phone listening quality has not been independently evaluated. OAuth refresh on Android is not implemented; replace expired access tokens in Settings. Highlight timing is estimated per sentence. Scanned PDF OCR, DRM and MOBI/AZW3 are outside scope.
 
 See [README.md](README.md) for exact emulator, mock, build/install, Vertex configuration and wireless-adb commands.

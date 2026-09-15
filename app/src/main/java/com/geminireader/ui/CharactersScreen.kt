@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.geminireader.ReaderApp
 import com.geminireader.analysis.VoiceDirector
+import com.geminireader.analysis.VoiceCatalog
 import com.geminireader.text.Segment
 
 @Composable fun CharactersScreen(app: ReaderApp) {
@@ -25,7 +26,9 @@ import com.geminireader.text.Segment
                     Text(character.name, style = MaterialTheme.typography.titleLarge)
                     Text("${character.gender} · ${character.description}", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(style, { style = it.take(600) }, label = { Text("Performance instructions") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(voice, { voice = it }, label = { Text("Distinct voice (blank = automatic)") }, modifier = Modifier.fillMaxWidth())
+                    Choice("Distinct voice", voice, listOf("") + VoiceCatalog.names, VoiceCatalog::label) { voice = it }
+                    Text("Automatic choice: ${VoiceCatalog.label(VoiceDirector.distinctVoice(character.copy(voice = ""), app.settings))}", style = MaterialTheme.typography.bodySmall)
+                    Text("Current performance: ${VoiceCatalog.label(if (app.settings.characterMode == "distinct") VoiceDirector.distinctVoice(character.copy(voice = voice), app.settings) else app.settings.narratorVoice)}", style = MaterialTheme.typography.bodySmall)
                     Row {
                         TextButton(onClick = { app.saveCharacter(character.copy(voiceStyle = style, voice = voice.trim())) }) { Text("Save") }
                         TextButton(onClick = { app.playback.preview(VoiceDirector.direct(Segment(0, 0, 33, "Hello. What a curious adventure!", "preview"), app.settings, character.copy(voiceStyle = style, voice = voice.trim()), "curious", true)) }) { Text("Preview") }

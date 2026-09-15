@@ -53,7 +53,10 @@ class ReaderApp : Application() {
     }
     fun saveSettings(value: Settings, test: Boolean = false) = task {
         val valid = validateSettings(value); playback.stop(); settingsStore.save(valid); settings = valid; status = "Settings saved"
-        if (test) playback.preview(Speech("Hello. Your reader is ready for the next chapter.", valid.narratorPrompt, valid.narratorVoice))
+        if (test) {
+            val text = "Hello. Your reader is ready for the next chapter."
+            playback.preview(VoiceDirector.direct(Segment(0, 0, text.length, text), valid, null, "", true))
+        }
     }
     fun fetchModels(value: Settings) = task {
         val valid = validateSettings(value)

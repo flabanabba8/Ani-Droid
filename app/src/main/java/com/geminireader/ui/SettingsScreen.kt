@@ -11,18 +11,19 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.geminireader.ReaderApp
 import com.geminireader.analysis.VoiceDirector
+import com.geminireader.analysis.VoiceCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable private fun Field(label: String, value: String, secret: Boolean = false, change: (String) -> Unit) {
     OutlinedTextField(value, change, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None, singleLine = true)
 }
-@Composable fun Choice(label: String, value: String, choices: List<String>, change: (String) -> Unit) {
+@Composable fun Choice(label: String, value: String, choices: List<String>, display: (String) -> String = { it }, change: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: $value") }
+        OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: ${display(value)}") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.heightIn(max = 380.dp)) {
-            choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, onClick = { change(choice); open = false }) }
+            choices.forEach { choice -> DropdownMenuItem(text = { Text(display(choice)) }, onClick = { change(choice); open = false }) }
         }
     }
 }
@@ -54,7 +55,8 @@ import kotlinx.coroutines.withContext
             item { Button(onClick = { app.saveSettings(draft, test = true) }, enabled = !app.busy && !app.playback.loading) { Text("Save & test speech / preview narrator") } }
             item { Field("TTS model", draft.model) { draft = draft.copy(model = it.trim()) } }
             item { Field("Language", draft.language) { draft = draft.copy(language = it.trim()) } }
-            item { Choice("Narrator voice", draft.narratorVoice, (VoiceDirector.female + VoiceDirector.male).sorted()) { draft = draft.copy(narratorVoice = it, narratorGender = if (it in VoiceDirector.female) "female" else "male") } }
+            item { Choice("Narrator voice", draft.narratorVoice, VoiceCatalog.names, VoiceCatalog::label) { draft = draft.copy(narratorVoice = it, narratorGender = VoiceCatalog.find(it)!!.gender) } }
+            item { Text("Voice traits are Google's published defaults, not fixed pitch ranges. Character prompts adapt the actual selected voice: higher/lighter for a male voice portraying a woman, lower/fuller for a female voice portraying a man. Explicit performance instructions override these defaults.", style = MaterialTheme.typography.bodySmall) }
             item { OutlinedTextField(draft.narratorPrompt, { draft = draft.copy(narratorPrompt = it.take(600)) }, label = { Text("Narrator instructions") }, modifier = Modifier.fillMaxWidth()) }
             item { Choice("Character mode", draft.characterMode, listOf("performance", "distinct", "narrator")) { draft = draft.copy(characterMode = it) } }
             item { Text("Performance: one narrator acts every role. Distinct: separate character voices. Narrator: skip character analysis.", style = MaterialTheme.typography.bodySmall) }

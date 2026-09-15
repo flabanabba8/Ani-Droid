@@ -41,7 +41,7 @@ def analyze(text):
             speaker = name.lower().replace(" ", "-")
             if name != "unknown":
                 gender = "female" if name in ("Alice", "Elizabeth", "Jane", "Lydia", "Mary") else "unknown"
-                cast[speaker] = dict(id=speaker, name=name, aliases=[], gender=gender, age="", description="Mock attribution from a speech tag", voiceStyle="Use a lighter, higher pitch and curious delivery." if gender == "female" else "Use a distinct, measured delivery.")
+                cast[speaker] = dict(id=speaker, name=name, aliases=[], gender=gender, age="", description="Mock attribution from a speech tag", voiceStyle="Use bright, curious delivery." if gender == "female" else "Use a distinct, measured delivery.", suggestedVoice="Leda" if gender == "female" else "Charon")
             lines.append(dict(q=q, speaker=speaker, delivery="curious" if "?" in quote else "natural"))
     return dict(characters=list(cast.values()), lines=lines)
 
