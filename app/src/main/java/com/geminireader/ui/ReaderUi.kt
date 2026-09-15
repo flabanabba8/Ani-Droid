@@ -38,7 +38,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable fun ReaderUi(app: ReaderApp) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) app.handle(Intent(Intent.ACTION_VIEW, uri)) }
-    BackHandler(app.screen != "library") { app.screen = if (app.screen == "characters") "reader" else "library" }
+    BackHandler(app.screen != "library") { app.screen = if (app.screen in listOf("characters", "pronunciation", "series")) "reader" else "library" }
     val dark = app.settings.theme == "dark" || (app.settings.theme == "system" && androidx.compose.foundation.isSystemInDarkTheme())
     val view = LocalView.current
     SideEffect { (view.context as? Activity)?.window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = !dark } }
@@ -56,6 +56,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             Column(Modifier.padding(padding).fillMaxSize()) {
                 if (app.status.isNotBlank()) Text(app.status, Modifier.fillMaxWidth().clickable { app.status = "" }.background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
                 when { app.screen == "settings" -> SettingsScreen(app)
+                    app.screen == "pronunciation" && app.book != null -> PronunciationScreen(app)
+                    app.screen == "series" && app.book != null -> SeriesScreen(app)
                     app.screen == "characters" && app.book != null -> CharactersScreen(app)
                     app.screen == "reader" && app.book != null -> ReaderScreen(app)
                     else -> LibraryScreen(app) }
@@ -96,6 +98,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     var toc by remember { mutableStateOf(false) }
     var inspecting by remember { mutableStateOf<Segment?>(null) }
     var exporting by remember { mutableStateOf<PlaybackEngine.ExportSelection?>(null) }
+    var preparing by remember { mutableStateOf(false) }
+    var removingPrepared by remember { mutableStateOf(false) }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { app.finishExport(it) }
     val list = rememberLazyListState()
     var follow by remember { mutableStateOf(true) }
@@ -114,8 +118,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             TextButton(onClick = { toc = true }) { Text("Contents · ${app.chapter + 1}/${book.chapters.size} · ${chapter.title}", maxLines = 2) }
             Row {
                 TextButton(onClick = { app.screen = "characters" }) { Text("Characters") }
-                TextButton(onClick = { runCatching { playback.exportSelection() }.onSuccess { exporting = it }.onFailure { app.status = it.message.orEmpty() } }, enabled = !app.busy && playback.activeBookId == book.id && playback.activeChapter == app.chapter) { Text("Export audio") }
+                TextButton(onClick = { runCatching { app.exportChapter() }.onSuccess { exporting = it }.onFailure { app.status = it.message.orEmpty() } }, enabled = !app.busy && !app.preparing) { Text("Export audio") }
             }
+            Row {
+                TextButton(onClick = { app.screen = "pronunciation" }) { Text("Pronunciation") }
+                TextButton(onClick = { app.screen = "series" }) { Text("Series voices") }
+            }
+            if (app.preparing) TextButton(onClick = { app.cancelPreparation() }) { Text("Cancel preparation") }
+            else TextButton(onClick = { preparing = true }) { Text("Prepare chapter offline") }
         }
         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             itemsIndexed(chapter.paragraphs) { index, text ->
@@ -134,6 +144,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             }
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
+        if (playback.speechFailed && playback.activeBookId == book.id) TextButton(onClick = { playback.retrySpeech() }) { Text("Retry failed speech") }
         if (playback.activeBookId == book.id) Text(BufferPolicy.label(playback.readyMs), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             Button(onClick = { playback.toggle() }) { Text(if (playback.activeBookId == book.id && playback.activeChapter == app.chapter && playback.player.playWhenReady && (playback.speaking || playback.loading || playback.player.mediaItemCount > 0)) "Pause" else "Play") }
@@ -148,6 +159,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     exporting?.let { selection -> AlertDialog(onDismissRequest = { exporting = null }, title = { Text("Export generated audio") }, text = { Text(selection.description + "\nExport itself requests no new speech. Normal playback buffering may continue.") }, confirmButton = {
         TextButton(onClick = { exporting = null; app.stageExport(selection) { exportPicker.launch("reader-chapter-${app.chapter + 1}.wav") } }) { Text("Save WAV") }
     }, dismissButton = { TextButton(onClick = { exporting = null }) { Text("Cancel") } }) }
+    if (preparing) AlertDialog(onDismissRequest = { preparing = false }, title = { Text("Prepare this entire chapter?") }, text = { Column { Text("${chapter.title}: ${chapter.paragraphs.sumOf { it.length }} text characters. This analyzes the chapter and generates missing speech, which can incur charges. Audio is retained outside the disposable cache. Keep the app open; cancellation retains completed segments for retry. Changes to voices or pronunciations require preparing again. No other chapters are prepared."); TextButton(onClick = { preparing = false; removingPrepared = true }) { Text("Remove saved chapter audio…") } } }, confirmButton = { TextButton(onClick = { preparing = false; app.prepareOffline() }) { Text("Prepare chapter") } }, dismissButton = { TextButton(onClick = { preparing = false }) { Text("Cancel") } })
+    if (removingPrepared) AlertDialog(onDismissRequest = { removingPrepared = false }, title = { Text("Remove prepared audio?") }, text = { Text("Deletes this chapter's retained audio and preparation manifest, not book text or analysis. Regenerating it may incur charges. Exported files are unaffected.") }, confirmButton = { TextButton(onClick = { removingPrepared = false; app.removePreparedChapter() }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { removingPrepared = false }) { Text("Cancel") } })
     if (toc) AlertDialog(onDismissRequest = { toc = false }, title = { Text("Contents") }, text = {
         LazyColumn { itemsIndexed(book.chapters) { index, entry -> TextButton(onClick = { app.selectChapter(index); toc = false }) { Text("${index + 1}. ${entry.title}") } } }
     }, confirmButton = { TextButton(onClick = { toc = false }) { Text("Close") } })

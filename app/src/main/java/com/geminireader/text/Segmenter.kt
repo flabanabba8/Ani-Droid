@@ -3,7 +3,7 @@ package com.geminireader.text
 import java.text.BreakIterator
 import java.util.Locale
 
-data class Segment(val paragraph: Int, val start: Int, val end: Int, val text: String, val q: String? = null)
+@kotlinx.serialization.Serializable data class Segment(val paragraph: Int, val start: Int, val end: Int, val text: String, val q: String? = null)
 object Segmenter {
     private val styles = listOf('„' to '“', '“' to '”', '"' to '"', '«' to '»', '‘' to '’', '\'' to '\'')
     private fun opening(text: String, index: Int, quote: Char): Boolean = text[index] == quote &&

@@ -68,6 +68,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with LOG_LOCK:
                 print(json.dumps({"path": self.path, "bearer_auth": self.headers.get("Authorization", "").startswith("Bearer "), "billing_project": self.headers.get("x-goog-user-project"), "request": body}, ensure_ascii=False), flush=True)
+                text_only = "AUDIO" in body.get("generationConfig", {}).get("responseModalities", []) and self.server.text_only_count > 0
+                if text_only:
+                    self.server.text_only_count -= 1
+            if text_only:
+                self.reply({"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "Mock text-only response"}]}}]})
+                return
             if self.path.endswith("text:synthesize"):
                 import io
                 import wave
@@ -102,8 +108,10 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--force-interactions", action="store_true")
+    parser.add_argument("--text-only-count", type=int, default=0, help="Return HTTP 200 without audio for the first N audio requests")
     args = parser.parse_args()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.force_interactions = args.force_interactions
+    server.text_only_count = args.text_only_count
     print(f"Mock Gemini listening on {args.host}:{args.port}", flush=True)
     server.serve_forever()

@@ -25,6 +25,57 @@ class ReaderApp : Application() {
     private val intentMutex = Mutex()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     lateinit var books: BookRepository
+    lateinit var performances: PerformanceRepository
+    lateinit var offline: OfflineChapters
+    var preparing by mutableStateOf(false)
+    private var preparationJob: Job? = null
+    fun cancelPreparation() { preparationJob?.cancel() }
+    fun removePreparedChapter() = task {
+        val target = book ?: return@task; val ch = chapter
+        preparationJob?.cancelAndJoin(); playback.stop()
+        withContext(Dispatchers.IO) { check(offline.folder(target.id, ch).deleteRecursively()) { "Could not remove prepared audio" } }
+        status = "Prepared chapter audio removed; it can be generated again"
+    }
+    fun prepareOffline() {
+        if (preparing) return
+        val target = book ?: return
+        val ch = chapter; val s = settings
+        playback.stop(); preparing = true
+        preparationJob = scope.launch {
+            try {
+                status = "Preparing chapter: analyzing…"
+                val segments = playback.prepareChapter(target, ch, s)
+                require(!status.startsWith("Character analysis unavailable")) { "Analysis failed; retry analysis or explicitly choose Narrator mode before preparing" }
+                val direct = playback.speechFor; val speaker = playback.speakerLabel
+                val plan = PreparedChapter(offline.signature(target, ch, s), segments.mapIndexed { index, segment ->
+                    val speech = direct(segment, s, segments.getOrNull(index + 1)?.paragraph != segment.paragraph)
+                    PreparedLine(segment, speech, speaker(segment), "${AudioCache.key(speech, s)}.wav")
+                })
+                withContext(Dispatchers.IO) { offline.save(target.id, ch, plan) }
+                val engine = TtsEngines.create(s, playback.api)
+                for ((index, line) in plan.lines.withIndex()) {
+                    ensureActive(); status = "Preparing chapter: ${index + 1}/${plan.lines.size} segments"
+                    withContext(Dispatchers.IO) {
+                        val destination = offline.audio(target.id, ch, line.file)
+                        if (!runCatching { WavExport.inspect(destination); true }.getOrDefault(false)) {
+                            val file = playback.cache.get(line.speech, s, engine)
+                            val temp = File(destination.parentFile, "${destination.name}.tmp")
+                            try { file.copyTo(temp, overwrite = true); WavExport.inspect(temp); check(temp.renameTo(destination)) } finally { temp.delete() }
+                        }
+                    }
+                }
+                withContext(Dispatchers.IO) { offline.save(target.id, ch, plan.copy(complete = true)) }
+                status = if (plan.signature == offline.signature(target, ch, settings)) "Chapter ready offline — full chapter export available" else "Preparation saved with older settings; prepare again to update"
+            } catch (e: CancellationException) { status = "Preparation canceled; completed segments retained for retry"; throw e }
+            catch (e: Exception) { status = "Chapter preparation failed: ${e.message}. Completed segments retained." }
+            finally { preparing = false; playback.cache.pinned.clear() }
+        }
+    }
+    fun exportChapter(): PlaybackEngine.ExportSelection {
+        val target = book ?: error("Open a book")
+        val ready = offline.ready(target, chapter, settings)
+        return if (ready != null) PlaybackEngine.ExportSelection(ready.lines.map { offline.audio(target.id, chapter, it.file) }, "Complete prepared chapter: ${ready.lines.size} segments, original 1× speed.") else playback.exportSelection()
+    }
     var library by mutableStateOf(emptyList<BookMeta>())
     var book by mutableStateOf<Book?>(null)
     var chapter by mutableStateOf(0)
@@ -103,13 +154,20 @@ class ReaderApp : Application() {
         models = names.distinct().sorted(); status = "Fetched ${models.size} models"
     }
     override fun onCreate() {
-        super.onCreate(); books = BookRepository(File(filesDir, "books")); settingsStore = SettingsStore(this); playback = PlaybackEngine(this)
+        super.onCreate(); books = BookRepository(File(filesDir, "books")); performances = PerformanceRepository(filesDir); offline = OfflineChapters(books, performances); settingsStore = SettingsStore(this); playback = PlaybackEngine(this)
         analyzer = CharacterAnalyzer(books, playback.api, scope)
         analyzer.onProgress = { id, ch, done, total -> scope.launch {
             if (playback.loading && playback.activeBookId == id && playback.activeChapter == ch)
                 status = "Analyzing chapter: $done/$total batches saved…"
         } }
-        playback.prepareChapter = { readingBook, readingChapter, s ->
+        playback.prepareChapter = prepare@ { readingBook, readingChapter, s ->
+            val prepared = withContext(Dispatchers.IO) { offline.ready(readingBook, readingChapter, s) }
+            if (prepared != null) {
+                val entries = prepared.lines.associateBy { it.segment }
+                playback.speechFor = { segment, _, _ -> entries.getValue(segment).speech }
+                playback.speakerLabel = { segment -> entries.getValue(segment).speaker }
+                return@prepare prepared.lines.map { it.segment }
+            }
             val paragraphs = readingBook.chapters[readingChapter].paragraphs
             val result = if (s.characterMode == "narrator") Analysis() else {
                 status = "Analyzing chapter (reusing saved/in-progress batches)…"
@@ -121,7 +179,19 @@ class ReaderApp : Application() {
             if (book?.id == readingBook.id) { cast = roster; if (chapter == readingChapter) analysis = result }
             val byId = roster.associateBy { it.id }
             val lines = result.lines.associateBy { it.q }
-            playback.speechFor = { segment, settings, end -> val line = lines[segment.q]; VoiceDirector.direct(segment, settings, byId[line?.speaker], line?.delivery.orEmpty(), end) }
+            val pronunciation = performances.applicable(readingBook.id)
+            val link = performances.link(readingBook.id)
+            val profiles = performances.series().firstOrNull { it.id == link.series }?.profiles.orEmpty().associateBy { it.id }
+            playback.speechFor = { segment, settings, end ->
+                val line = lines[segment.q]
+                val original = byId[line?.speaker]
+                val profile = profiles[link.voices[original?.id]]
+                val person = if (profile == null) original else original?.copy(voice = profile.voice.ifBlank { original.voice }, voiceStyle = profile.style)
+                val speech = VoiceDirector.direct(segment, settings, person, line?.delivery.orEmpty(), end)
+                val spoken = PronunciationRules.apply(speech.text, pronunciation)
+                require(spoken.toByteArray().size <= 4000) { "Pronunciation replacements made this segment too long; shorten the spoken replacements" }
+                speech.copy(text = spoken)
+            }
             playback.speakerLabel = { segment -> byId[lines[segment.q]?.speaker]?.name ?: "Narrator" }
             if (s.characterMode == "narrator" || result.lines.isEmpty()) Segmenter.narration(paragraphs)
             else Segmenter.mergeUnknown(Segmenter.dialogue(paragraphs), paragraphs, result.lines.filter { it.speaker in byId }.map { it.q }.toSet())
@@ -159,7 +229,7 @@ class ReaderApp : Application() {
     }
     fun savePosition() { val id = book?.id ?: return; books.position(id, Position(chapter, paragraph)) }
     fun saveReadingPosition() { val id = book?.id ?: return; val pos = Position(chapter, paragraph); scope.launch(Dispatchers.IO) { books.readingPosition(id, pos) } }
-    fun delete(id: String) = task { if (playback.activeBookId == id) playback.stop(); analyzer.cancelBook(id); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
+    fun delete(id: String) = task { preparationJob?.cancelAndJoin(); if (playback.activeBookId == id) playback.stop(); analyzer.cancelBook(id); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
     fun handle(intent: Intent) = task {
         intentMutex.withLock {
         settings = settingsStore.flow.first()
@@ -216,6 +286,13 @@ class ReaderApp : Application() {
             if (intent.hasExtra("debug_chapter")) book?.let { chapter = intent.getIntExtra("debug_chapter", 0).coerceIn(0, it.chapters.lastIndex); paragraph = 0 }
             loadCharacters()
             if (intent.hasExtra("debug_play")) book?.let { paragraph = intent.getIntExtra("debug_play", 0).coerceIn(0, it.chapters[chapter].paragraphs.lastIndex); screen = "reader"; playback.play(it, chapter, paragraph) }
+            if (intent.hasExtra("debug_preview_paragraph")) book?.let { target ->
+                val index = intent.getIntExtra("debug_preview_paragraph", 0)
+                playback.stop()
+                val segments = playback.prepareChapter(target, chapter, settings)
+                val segment = segments.first { it.paragraph == index }
+                playback.preview(playback.speechFor(segment, settings, true))
+            }
         }
         }
     }

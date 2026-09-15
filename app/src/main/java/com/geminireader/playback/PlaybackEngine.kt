@@ -37,6 +37,15 @@ class PlaybackEngine(private val app: ReaderApp) {
     var activeChapter by mutableStateOf(0)
     var speaking by mutableStateOf(false)
     var loading by mutableStateOf(false)
+    var speechFailed by mutableStateOf(false)
+    private var retryParagraph = 0
+    fun retrySpeech() {
+        val target = playbackBook ?: return
+        val ch = playbackChapter
+        val canResume = player.currentMediaItem != null
+        persist()
+        play(target, ch, retryParagraph, resume = canResume)
+    }
     var progress by mutableFloatStateOf(0f)
     var speed by mutableFloatStateOf(1f)
     var speaker by mutableStateOf("Narrator")
@@ -93,6 +102,8 @@ class PlaybackEngine(private val app: ReaderApp) {
     }
     fun changeSpeed(value: Float) { speed = value; player.playbackParameters = PlaybackParameters(value); updateBuffer(); persist() }
     fun play(book: Book, chapter: Int, paragraph: Int, resume: Boolean = false) {
+        if (app.preparing) { app.status = "Wait for chapter preparation or cancel it before playback"; return }
+        speechFailed = false; retryParagraph = paragraph
         app.rememberBook(book.id)
         if (!resume && activeBookId == book.id && activeChapter == chapter && preparedSettings == app.settings) {
             val ready = segments.indexOfFirst { it.paragraph == paragraph }
@@ -134,8 +145,9 @@ class PlaybackEngine(private val app: ReaderApp) {
                         val i = scheduled++
                         pending[i] = async(Dispatchers.IO) { permits.withPermit {
                             val speech = direct(chapterSegments[i], settings, chapterSegments.getOrNull(i + 1)?.paragraph != chapterSegments[i].paragraph)
-                            val reused = cache.contains(speech, settings)
-                            cache.get(speech, settings, engine) to reused
+                            val durable = app.offline.audio(book.id, chapter, "${AudioCache.key(speech, settings)}.wav")
+                            if (durable.isFile) { WavExport.inspect(durable); durable to true }
+                            else { val reused = cache.contains(speech, settings); cache.get(speech, settings, engine) to reused }
                         } }
                     }
                     val (file, reused) = pending.remove(index)!!.await()
@@ -159,7 +171,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                 complete = true
                 if (player.playbackState == Player.STATE_ENDED && player.playWhenReady) nextChapter()
                 }
-            } catch (e: CancellationException) { throw e } catch (e: Exception) { app.status = e.message ?: "Could not prepare speech"; loading = false; restoring = false }
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { app.status = e.message ?: "Could not prepare speech"; loading = false; restoring = false; speechFailed = true }
         }
     }
     var speakerLabel: (Segment) -> String = { "Narrator" }
@@ -180,6 +192,7 @@ class PlaybackEngine(private val app: ReaderApp) {
         } else { app.status = "Book finished"; player.pause() }
     }
     fun preview(speech: Speech) {
+        if (app.preparing) { app.status = "Cancel chapter preparation before previewing"; return }
         stop(); loading = true
         val gen = generation
         app.startService(Intent(app, PlaybackService::class.java))
