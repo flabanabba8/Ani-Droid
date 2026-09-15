@@ -147,7 +147,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                             val speech = direct(chapterSegments[i], settings, chapterSegments.getOrNull(i + 1)?.paragraph != chapterSegments[i].paragraph)
                             val durable = app.offline.audio(book.id, chapter, "${AudioCache.key(speech, settings)}.wav")
                             if (durable.isFile) { WavExport.inspect(durable); durable to true }
-                            else { val reused = cache.contains(speech, settings); cache.get(speech, settings, engine) to reused }
+                            else { val reused = cache.contains(speech, settings); app.bookAudio(book.id, chapter, chapterSegments[i]) { cache.get(speech, settings, engine) } to reused }
                         } }
                     }
                     val (file, reused) = pending.remove(index)!!.await()

@@ -25,6 +25,22 @@ class ReaderApp : Application() {
     private val intentMutex = Mutex()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     lateinit var books: BookRepository
+    val rejectedPassages by lazy { RejectedPassages(books) }
+    var rejectionRevision by mutableStateOf(0)
+    suspend fun bookAudio(bookId: String, chapter: Int, segment: Segment, generate: suspend () -> File): File {
+        try {
+            val file = generate()
+            withContext(Dispatchers.IO) { rejectedPassages.resolved(bookId, chapter, segment) }
+            withContext(Dispatchers.Main) { rejectionRevision++ }
+            return file
+        } catch (e: MissingAudio) {
+            if (e.blocked) withContext(NonCancellable) {
+                withContext(Dispatchers.IO) { rejectedPassages.record(bookId, chapter, segment, e.reason) }
+                withContext(Dispatchers.Main) { rejectionRevision++ }
+            }
+            throw e
+        }
+    }
     lateinit var performances: PerformanceRepository
     lateinit var offline: OfflineChapters
     var preparing by mutableStateOf(false)
@@ -58,7 +74,7 @@ class ReaderApp : Application() {
                     withContext(Dispatchers.IO) {
                         val destination = offline.audio(target.id, ch, line.file)
                         if (!runCatching { WavExport.inspect(destination); true }.getOrDefault(false)) {
-                            val file = playback.cache.get(line.speech, s, engine)
+                            val file = bookAudio(target.id, ch, line.segment) { playback.cache.get(line.speech, s, engine) }
                             val temp = File(destination.parentFile, "${destination.name}.tmp")
                             try { file.copyTo(temp, overwrite = true); WavExport.inspect(temp); check(temp.renameTo(destination)) } finally { temp.delete() }
                         }

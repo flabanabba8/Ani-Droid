@@ -35,6 +35,7 @@ import com.geminireader.ReaderApp
 import com.geminireader.data.BookMeta
 import java.io.File
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @Composable fun ReaderUi(app: ReaderApp) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) app.handle(Intent(Intent.ACTION_VIEW, uri)) }
@@ -105,6 +106,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val list = rememberLazyListState()
     var follow by remember { mutableStateOf(true) }
     val playback = app.playback
+    val rejected = remember(book.id, app.chapter, app.rejectionRevision) {
+        app.rejectedPassages.list(book.id).filter { it.chapter == app.chapter }
+    }
     val active = playback.active?.takeIf { playback.activeBookId == book.id && playback.activeChapter == app.chapter }
     LaunchedEffect(book.id, app.chapter) { list.scrollToItem(app.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)) }
     LaunchedEffect(active?.paragraph, follow) { if (follow && active != null) list.animateScrollToItem(active.paragraph) }
@@ -140,13 +144,22 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                         val sentence = Segmenter.sentences(active.text).firstOrNull { offset in it }
                         if (sentence != null) addStyle(SpanStyle(background = Color(0xffffd982), color = Color(0xff292817)), active.start + sentence.first, active.start + sentence.last + 1)
                     }
+                    rejected.filter { it.segment.paragraph == index }.forEach { rejection ->
+                        val segment = rejection.segment
+                        if (segment.start >= 0 && segment.end <= text.length && segment.start < segment.end && text.substring(segment.start, segment.end) == segment.text)
+                            addStyle(SpanStyle(background = Color(0xff8b1e2d), color = Color.White), segment.start, segment.end)
+                    }
                 }
+                Column {
+                if (rejected.any { it.segment.paragraph == index }) Text("Provider rejected this passage · ${rejected.filter { it.segment.paragraph == index }.map { it.reason }.distinct().joinToString()}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
                 Text(annotated, Modifier.fillMaxWidth().combinedClickable(onClick = { app.paragraph = index; playback.play(book, app.chapter, index) }, onLongClick = {
                     inspecting = active?.takeIf { it.paragraph == index } ?: Segmenter.dialogue(chapter.paragraphs).firstOrNull { it.paragraph == index && it.q != null } ?: Segment(index, 0, text.length, text)
                 }), fontFamily = FontFamily.Serif, fontSize = app.settings.fontSize.sp, lineHeight = (app.settings.fontSize * 1.5f).sp)
+                }
             }
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
+        if (rejected.isNotEmpty()) TextButton(onClick = { follow = false; app.scope.launch { list.animateScrollToItem(rejected.first().segment.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)) } }) { Text("Show rejected passage (${rejected.size})", color = MaterialTheme.colorScheme.error) }
         if (playback.speechFailed && playback.activeBookId == book.id) TextButton(onClick = { playback.retrySpeech() }) { Text("Retry failed speech") }
         if (playback.activeBookId == book.id) Text(BufferPolicy.label(playback.readyMs), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
