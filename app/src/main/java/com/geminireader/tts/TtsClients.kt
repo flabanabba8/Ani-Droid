@@ -20,6 +20,18 @@ class MissingAudio(val blocked: Boolean, val reason: String): IllegalStateExcept
     if (blocked) "Gemini declined this passage ($reason). No audio was generated."
     else "Gemini returned no audio ($reason). Use Retry failed speech; the book text has not been changed."
 )
+// Retry generation failures separately from HTTP failures; never replay explicit blocks.
+internal suspend fun retryGeneration(attempts: Int = 3, generate: suspend () -> Pcm): Pcm {
+    require(attempts > 0)
+    repeat(attempts) { attempt ->
+        currentCoroutineContext().ensureActive()
+        try { return generate() } catch (e: MissingAudio) {
+            if (e.blocked || attempt == attempts - 1) throw e
+            delay(500L shl attempt)
+        }
+    }
+    error("Generation attempts exhausted")
+}
 class HttpApi(val readTimeoutMs: Long = 120_000, val callTimeoutMs: Long = 150_000) {
     // A call deadline alone leaves OkHttp's much shorter default socket read timeout active.
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
@@ -92,12 +104,8 @@ object VertexEndpoint {
     }
 }
 class VertexTtsClient(private val api: HttpApi): TtsEngine {
-    override suspend fun synthesize(speech: Speech, settings: Settings): Pcm {
-        repeat(3) { attempt ->
-            val response = VertexEndpoint.request(api, settings, settings.model, GeminiApiTtsClient.body(speech))
-            try { return ApiAudio.gemini(response) } catch (e: MissingAudio) { if (e.blocked || attempt == 2) throw e; delay(500L * (attempt + 1)) }
-        }
-        error("Vertex returned no audio")
+    override suspend fun synthesize(speech: Speech, settings: Settings): Pcm = retryGeneration {
+        ApiAudio.gemini(VertexEndpoint.request(api, settings, settings.model, GeminiApiTtsClient.body(speech)))
     }
 }
 object ApiAudio {
@@ -109,15 +117,29 @@ object ApiAudio {
         val reason = (block.ifBlank { finish }.ifBlank { "no audio part" }).filter { it.isLetterOrDigit() || it == '_' || it == ' ' }.take(64)
         return MissingAudio(blocked, reason)
     }
-    fun cloud(response: JsonObject): Pcm = Wav.decode(Base64.getDecoder().decode(response["audioContent"]?.jsonPrimitive?.content ?: error("Cloud returned no audio")))
+    private fun nonempty(pcm: Pcm): Pcm {
+        if (pcm.bytes.isEmpty()) throw MissingAudio(false, "empty audio")
+        return pcm
+    }
+    fun cloud(response: JsonObject): Pcm {
+        val rejection = missing(response)
+        if (rejection.blocked) throw rejection
+        val encoded = response["audioContent"]?.jsonPrimitive?.content
+        if (encoded.isNullOrBlank()) throw MissingAudio(false, "empty audio")
+        return nonempty(Wav.decode(Base64.getDecoder().decode(encoded)))
+    }
     fun gemini(response: JsonObject): Pcm {
+        val rejection = missing(response)
+        if (rejection.blocked) throw rejection
         val parts = response["candidates"]?.jsonArray?.firstOrNull()?.jsonObject?.get("content")?.jsonObject?.get("parts")?.jsonArray
         val audio = parts?.firstNotNullOfOrNull { it.jsonObject["inlineData"]?.jsonObject }
             ?: response["output_audio"]?.jsonObject
             ?: response["outputs"]?.jsonArray?.firstNotNullOfOrNull { element -> element.jsonObject.takeIf { it["type"]?.jsonPrimitive?.content == "audio" } }
             ?: throw missing(response)
-        val data = Base64.getDecoder().decode(audio["data"]?.jsonPrimitive?.content ?: error("Missing audio data"))
-        if (data.size >= 4 && String(data, 0, 4) == "RIFF") return Wav.decode(data)
+        val encoded = audio["data"]?.jsonPrimitive?.content
+        if (encoded.isNullOrBlank()) throw MissingAudio(false, "empty audio")
+        val data = Base64.getDecoder().decode(encoded)
+        if (data.size >= 4 && String(data, 0, 4) == "RIFF") return nonempty(Wav.decode(data))
         val mime = (audio["mimeType"] ?: audio["mime_type"])?.jsonPrimitive?.content.orEmpty()
         val rate = Regex("rate=(\\d+)").find(mime)?.groupValues?.get(1)?.toInt() ?: audio["sample_rate"]?.jsonPrimitive?.intOrNull ?: 24000
         require(data.isNotEmpty() && data.size % 2 == 0 && rate in 8000..192000) { "Invalid PCM audio" }
@@ -131,7 +153,9 @@ class CloudTtsClient(private val api: HttpApi): TtsEngine {
             return obj("input" to obj("text" to str(speech.text), "prompt" to str(speech.prompt)), "voice" to obj("languageCode" to str(s.language), "name" to str(speech.voice), "modelName" to str(s.model)), "audioConfig" to obj("audioEncoding" to str("LINEAR16"), "sampleRateHertz" to JsonPrimitive(24000)))
         }
     }
-    override suspend fun synthesize(speech: Speech, settings: Settings): Pcm = ApiAudio.cloud(api.request("${settings.cloudUrl.trimEnd('/')}/v1/text:synthesize", settings.apiKey, body(speech, settings), settings.oauthToken, settings.project))
+    override suspend fun synthesize(speech: Speech, settings: Settings): Pcm = retryGeneration {
+        ApiAudio.cloud(api.request("${settings.cloudUrl.trimEnd('/')}/v1/text:synthesize", settings.apiKey, body(speech, settings), settings.oauthToken, settings.project))
+    }
 }
 class GeminiApiTtsClient(private val api: HttpApi): TtsEngine {
     companion object {
@@ -143,13 +167,14 @@ class GeminiApiTtsClient(private val api: HttpApi): TtsEngine {
         val base = settings.geminiUrl.trimEnd('/')
         val key = settings.geminiKey.ifBlank { settings.apiKey }
         try {
-            repeat(2) { attempt ->
-                val response = api.request("$base/v1beta/models/${settings.model.removePrefix("models/")}:generateContent", key, body(speech))
-                try { return ApiAudio.gemini(response) } catch (e: MissingAudio) { if (e.blocked || attempt == 1) throw e; delay(500) }
+            return retryGeneration(attempts = 2) {
+                ApiAudio.gemini(api.request("$base/v1beta/models/${settings.model.removePrefix("models/")}:generateContent", key, body(speech)))
             }
         } catch (e: CancellationException) { throw e } catch (e: ApiFailure) {
             if (e.code !in listOf(400, 404, 405, 501) && e.code < 500) throw e
         } catch (e: MissingAudio) { if (e.blocked) throw e /* Non-blocked text-only response: try Interactions. */ }
-        return ApiAudio.gemini(api.request("$base/v1beta/interactions", key, interactions(speech, settings.model.removePrefix("models/"))))
+        return retryGeneration {
+            ApiAudio.gemini(api.request("$base/v1beta/interactions", key, interactions(speech, settings.model.removePrefix("models/"))))
+        }
     }
 }
