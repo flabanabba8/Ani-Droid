@@ -104,6 +104,7 @@ import kotlinx.coroutines.launch
     var removingPrepared by remember { mutableStateOf(false) }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { app.finishExport(it) }
     val list = rememberLazyListState()
+    val readerScope = rememberCoroutineScope()
     var follow by remember { mutableStateOf(true) }
     val playback = app.playback
     val rejected = remember(book.id, app.chapter, app.rejectionRevision) {
@@ -159,7 +160,12 @@ import kotlinx.coroutines.launch
             }
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
-        if (rejected.isNotEmpty()) TextButton(onClick = { follow = false; app.scope.launch { list.animateScrollToItem(rejected.first().segment.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)) } }) { Text("Show rejected passage (${rejected.size})", color = MaterialTheme.colorScheme.error) }
+        if (rejected.isNotEmpty() && chapter.paragraphs.isNotEmpty()) TextButton(onClick = {
+            follow = false
+            val target = rejected.first().segment.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)
+            // Scroll animations require Compose's frame clock, not the application worker scope.
+            readerScope.launch { list.animateScrollToItem(target) }
+        }) { Text("Show rejected passage (${rejected.size})", color = MaterialTheme.colorScheme.error) }
         if (playback.speechFailed && playback.activeBookId == book.id) TextButton(onClick = { playback.retrySpeech() }) { Text("Retry failed speech") }
         if (playback.activeBookId == book.id) Text(BufferPolicy.label(playback.readyMs), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
