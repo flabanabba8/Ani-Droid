@@ -1,10 +1,10 @@
 ---
 machine: build-host / Android
-subsystem: gemini-reader
+subsystem: pagecast
 last-verified: 2026-09-15
 status: active
 ---
-# Gemini Reader LLM wiki
+# PageCast LLM wiki
 
 Start here in future sessions. This is the project's durable knowledge base, following the conventions in the user's infrastructure llm-wiki. Keep observed facts separate from plans; update verification dates after testing, not merely editing. Never store credentials or copyrighted book content here.
 

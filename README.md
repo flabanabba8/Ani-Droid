@@ -1,4 +1,6 @@
-# Gemini Reader
+# PageCast
+
+Previously Gemini Reader. The Android package remains `com.geminireader` so upgrades retain books, settings, and audio. Existing workspace paths and token-broker service names remain unchanged for compatibility.
 
 Personal Android reader built with Compose and Media3. Package: `com.geminireader`. Android 8+ (API 26); target API 36, compile API 37.2. The handoff's pinned Compose, core, lifecycle and OkHttp versions require compile SDK 37 or later according to their AAR metadata. The emulator remains API 36.
 

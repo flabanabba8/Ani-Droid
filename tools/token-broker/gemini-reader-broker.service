@@ -1,5 +1,5 @@
 [Unit]
-Description=Gemini Reader private LAN token broker
+Description=PageCast private LAN token broker
 After=network-online.target
 
 [Service]

@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
         Scaffold(modifier = Modifier.fillMaxSize(), topBar = {
             Column(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { app.screen = "library" }) { Text("Gemini Reader") }
+                    TextButton(onClick = { app.screen = "library" }) { Text(androidx.compose.ui.res.stringResource(com.geminireader.R.string.app_name)) }
                     if (app.screen == "library") TextButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Import book") }
                     TextButton(onClick = { app.screen = "settings" }) { Text("Settings") }
                 }
