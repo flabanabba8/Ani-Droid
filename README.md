@@ -4,6 +4,8 @@ Personal Android reader built with Compose and Media3. Package: `com.geminireade
 
 ## Local development
 
+Project knowledge base: [LLM wiki](wiki/README.md), [complete feature backlog](wiki/features.md), [current milestone](wiki/current-work.md).
+
 No system packages or sudo are needed. The setup script installs Temurin JDK 21 and the official Android SDK in your home directory. System Java 25 is not used.
 
 ```bash
@@ -65,7 +67,7 @@ The Android emulator reaches the host through `http://10.0.2.2:8765`. The server
 4. In the app's Settings choose `vertex`, enter the **project ID**, region `us-central1`, and the resulting **OAuth access token**. Leave the advanced Vertex URL blank for Google's regional endpoint. Save and test speech.
 5. Default speech model: `gemini-3.1-flash-tts-preview`; default analysis model: `gemini-2.5-flash`. Both names are editable. Fetch models queries the selected provider's catalog; availability can vary by region and account.
 
-Access tokens expire, typically after about an hour. Renew the token and replace it in Settings. This version does not implement interactive Google sign-in or automatic token refresh on Android. Do not put a service-account private key in the APK. App-private settings hold the token; cloud backup and device transfer are disabled. This is a personal development app, not a credential distribution service.
+Access tokens expire, typically after about an hour. **Automatic renewal is available through the BROKER_HOST's private LAN broker**: install the current debug APK and run `ANDROID_SERIAL=PHONE_IP:DEBUGGING_PORT tools/pair-token-broker.sh`. The phone receives short-lived tokens over pinned HTTPS; Google refresh credentials stay on BROKER_HOST. BROKER_HOST must be awake/reachable for renewal. See [authentication setup, security and recovery](wiki/authentication.md). Manual tokens remain available, but require replacement when they expire. No service-account private key belongs in the APK. App backup/device transfer are disabled; interactive phone Google sign-in is not implemented.
 
 For this debug emulator, refresh directly from the BROKER_HOST's existing Application Default Credentials without printing or copying its long-lived credentials:
 
@@ -116,7 +118,7 @@ To use the host mock from the phone, select that device with `export ANDROID_SER
 
 - Character analysis runs for the current chapter, not the whole book (unless you choose **Analyze whole book**). It sends batches of roughly 6,000 tagged characters with at most 24 quote spans, plus the voice catalog, roster and a small preceding-context excerpt. Successful batches are saved immediately and reused after errors or restarts. The reader shows batch progress. **Characters → Analyze this chapter / retry** prepares just this chapter and resumes saved batches.
 - Playback waits for the chapter's analysis before preparing character-directed audio. Gemini 2.5 Flash/Flash-Lite analysis disables optional thinking to reduce latency. Model selection is a dropdown; fetched text-model names extend the built-in choices. Availability still depends on project/region.
-- TTS is incremental: each narration/dialogue span is split at sentence boundaries where possible, up to about 1,200 characters per audio request. Two requests may run concurrently. **Prefetch segments** controls the look-ahead window (default 3); a segment is not necessarily a paragraph. Audio is cached as each request completes, not rendered for the whole book at once.
+- TTS is incremental: each narration/dialogue span is split at sentence boundaries where possible, up to about 1,200 characters per audio request. Two requests may run concurrently. **Audio buffer** sets a duration target (default 120 seconds; 15–600 configurable). The reader shows actual queued time remaining, adjusted for speed. It is best effort, can overshoot by pending segments, and continues filling while paused. Audio is cached as each request completes, not rendered for the whole book at once.
 - Tapping a paragraph already in the prepared queue seeks directly without restarting analysis or discarding the queue. Other jumps reuse completed audio and shared in-progress analysis, but may still need to generate uncached speech. Unfinished TTS requests outside the retained queue can be canceled by a restart. A recently failed analysis is held for 30 seconds to avoid repeated requests on every tap; the chapter retry button bypasses that cooldown while preserving checkpoints.
 - Analysis now survives cancellation of a playback waiter during a jump and finishes saving the requested chapter. Deleting the book cancels its analysis. Changing voice/model/backend creates separate cache identities.
 - The HTTP client explicitly allows 120 seconds without response data and a 150-second total call deadline; timeouts get at most one retry. The old client inadvertently retained a 10-second socket read timeout despite a longer overall deadline.
@@ -124,7 +126,11 @@ To use the host mock from the phone, select that device with `export ANDROID_SER
 
 ## Limits and verification
 
-Live Vertex OAuth, text generation (`gemini-2.5-flash`), and speech generation (`gemini-3.1-flash-tts-preview`, Charon, 24 kHz PCM) succeeded in `us-central1` using the BROKER_HOST's user ADC and project `YOUR_PROJECT_ID`. Real audio also played on the emulator. This does not establish whether promotional credits cover the charges, broad attribution accuracy, or subjective voice quality. The headless emulator is muted. Vertex OAuth renewal requires a fresh token, entered manually or through the SSH helper above. See `VERIFICATION.md` for live character-attribution results.
+**Resume:** reopening the app returns to the last book's listening location without automatically playing. Audio offset and speed are saved separately from scrolling, every two seconds and on pause/background transitions. Unchanged cached audio restores the millisecond offset; after eviction/regeneration or voice changes, playback safely restarts the saved segment. Sentence highlighting remains estimated. Sudden process death may lose up to the periodic-save interval.
+
+**Export:** in the reader, choose **Export audio → Save WAV**, then save with Android's document picker. This exports only the generated current chapter queue, which may begin at a paragraph you jumped to or end partway through a paragraph. It includes entire generated segments, not just audio remaining after the playhead. WAV is mono 16-bit PCM at original 1× speed, retaining generated pauses. Export itself makes no synthesis requests; normal buffering can continue. It needs temporary disk space and does not yet provide offline whole-chapter preparation, compressed M4A, or chapter markers.
+
+Live Vertex OAuth, text generation (`gemini-2.5-flash`), and speech generation (`gemini-3.1-flash-tts-preview`, Charon, 24 kHz PCM) succeeded in `us-central1` using the BROKER_HOST's user ADC and project `YOUR_PROJECT_ID`. Real audio also played on the emulator through broker-backed auth. This does not establish whether promotional credits cover the charges, broad attribution accuracy, or subjective voice quality. The headless emulator is muted. See `VERIFICATION.md` for results.
 
 EPUB spine/TOC and covers, text PDFs, TXT, HTML, Markdown, FB2 and DOCX are supported. This is a text-first reader: complex document layout, embedded illustrations (except covers), footnote navigation, and advanced Markdown formatting are simplified. PDF extraction quality depends on the document's text layer. Scanned PDFs need external OCR; MOBI/AZW3 and DRM are not supported.
 
