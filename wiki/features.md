@@ -12,14 +12,14 @@ The complete post-MVP brainstorm, with the requested audio export addition. Orig
 
 1. **Automatic Vertex authentication renewal.** IMPLEMENTED: authenticated, certificate-pinned HTTPS broker on BROKER_HOST, automatic short-lived token refresh and concurrent refresh sharing. No Google refresh credentials on phone. Local Wi-Fi required; see [security and runbook](authentication.md).
 2. **Time-based buffering.** IMPLEMENTED: configurable playable-duration target, visible seconds/minutes ready, two concurrent synthesis calls. Duration uses actual generated WAVs and playback speed; jumps reuse prepared audio. Best-effort target, not a spending cap.
-3. **Prepare chapter offline.** PLANNED: explicit chapter selection, preflight work/storage estimate, progress, cancellation, resumable generation, and durable audio outside the disposable LRU. Acceptance: the prepared chapter plays in airplane mode without analysis or TTS requests. Never prepare an entire book implicitly.
+3. **Prepare chapter offline.** IMPLEMENTED FIRST VERSION: explicit current-chapter confirmation, source character count, progress/cancellation, reusable completed segment files, durable WAVs outside the disposable LRU and full-chapter export. Tested with mock server stopped and disposable cache removed. Background job resumption and precise storage/cost estimation remain future work. See [implementation](next-milestone.md).
 4. **Reliable resume.** IMPLEMENTED: separate audio/scroll bookmarks, saved offset and speed, last-book reopening. See [current verification and limits](current-work.md).
 5. **Sleep timer.** PLANNED: elapsed time, end of paragraph, end of chapter.
 
 ## Better performances
 
-6. **Persistent series cast.** PLANNED: explicit series membership; reuse character identity, voices, pronunciation and user edits across volumes; no accidental merging by name alone. Acceptance: a second volume adopts its linked series' cast and manual edits remain authoritative.
-7. **Pronunciation dictionary.** PLANNED: name corrections reused across books/series without changing displayed source text.
+6. **Persistent series cast.** PARTIAL: explicit series membership and manually linked reusable voice profiles implemented. No automatic cross-book name/alias matching or plot-description transfer. Strict progressive/reveal-gated analysis remains planned; current whole-chapter analysis is not spoiler-free.
+7. **Pronunciation dictionary.** IMPLEMENTED: manual entry/edit/delete, narrator preview, book/series/global scope, whole-word/phrase phonetic substitutions used only in spoken text. Original analysis and displayed text remain unchanged.
 8. **Character auditions.** PLANNED: compare the same quote across voices and directions before saving a choice.
 9. **Performance intensity.** PLANNED: restrained narration through dramatic acting, with character overrides.
 10. **Correct a wrong speaker.** PARTIAL MVP: long-press and reassign exists. Add a streamlined correction flow and regenerate only affected audio; invalidate offline/export manifests deliberately.

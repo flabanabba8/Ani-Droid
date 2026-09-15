@@ -1,5 +1,7 @@
 # Verification — 2026-09-15
 
+Latest feature verification: [offline chapters, manual pronunciation, series voice profiles and no-audio recovery](wiki/next-milestone.md). This includes 52 passing JVM tests, mock no-audio/retry UI testing, prepared playback with the mock server stopped and disposable cache absent, and a successful live retry of the reported jacket paragraph. User reports physical headphone disconnect pauses and manual Play resumes successfully.
+
 Branch: `gardeneel`. Tests ran on this Ubuntu machine with user-space Temurin JDK 21, Gradle 9.7.1 and the official Android Emulator. No sudo, system-package installation, Waydroid, or git push was used. Initial checks used mocks; subsequent live Vertex checks used an authorized short-lived token from the BROKER_HOST.
 
 ## Build and automated tests

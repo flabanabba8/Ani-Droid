@@ -6,6 +6,8 @@ status: implemented and smoke tested
 ---
 # Current work
 
+Latest implementation: [offline chapters, pronunciation, manually linked series voices and text-only TTS recovery](next-milestone.md). The milestone below is historical context. User subsequently verified physical headphone disconnect pauses and manual Play resumes seamlessly; connecting does not autoplay.
+
 Baseline commit: `7588fdf`, functioning MVP, 39 JVM tests. User clarified scope: **automatic Vertex renewal, smarter buffering, reliable resume, plus audio export**. Local Wi-Fi through BROKER_HOST is acceptable. Offline chapter preparation and series casts remain backlog.
 
 ## Implemented

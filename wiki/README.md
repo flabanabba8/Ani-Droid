@@ -13,6 +13,7 @@ Start here in future sessions. This is the project's durable knowledge base, fol
 - [Development runbook](development.md) — build, emulator and phone workflow.
 - [Authentication](authentication.md) — private BROKER_HOST broker, pairing, recovery and security limits.
 - [Current work](current-work.md) — implementation status and next steps.
+- [Offline chapters and reusable performances](next-milestone.md) — pronunciation, series profiles, preparation and remaining spoiler work.
 - [Verification evidence](../VERIFICATION.md) — actual test results, not aspirations.
 - [Voice research](../docs/voices.md) — official voice metadata and prompt policy.
 
