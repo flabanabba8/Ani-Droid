@@ -1,0 +1,8 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+tools/samples/
+tools/artifacts/
+__pycache__/
+*.log
