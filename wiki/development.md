@@ -28,3 +28,24 @@ ANDROID_SERIAL=emulator-5554 tools/pair-token-broker.sh
 ```
 
 See [authentication](authentication.md) for service operations, security and rotation. `tools/use-vertex-ssh.sh` remains the manual fallback and disables broker mode. Prefer the mock for repeated tests; use short original-text fixtures for live smoke tests and avoid accidentally rendering an entire book.
+
+## On-device Kokoro and release work
+
+Python 3.11+ prepares checksum-pinned runtime/model inputs during Gradle builds. First builds need network access and substantial disk space; cached inputs live in `.cache/kokoro-android`. See [Kokoro setup/testing](kokoro.md). `assembleDebugAndroidTest` builds real native instrumentation tests; run them on the emulator first. These tests can stop/restart the app: avoid interrupting a user who is listening on the phone.
+
+**Current phone preference:** Vertex with the saved BROKER_HOST automatic-renewal configuration, restored after the Kokoro quality report. Preserve credentials and listening position. `gemini` is the separate API-key engine; the user's existing OAuth/broker setup belongs to `vertex`. Do not select Kokoro on the phone simply because a new build contains it. Local defaults remain Vertex/Performance.
+
+Use [F-Droid release preparation](fdroid.md) for public build/signing/source requirements. The present debug build process is not a validated F-Droid recipe. Do not publish private infrastructure notes, pairing files, logs or book excerpts without review.
+
+## Track phone RAM while listening
+
+```bash
+source tools/env.sh
+python3 tools/monitor-memory.py --serial YOUR_PHONE_SERIAL
+```
+
+Samples every two seconds and prints decimal MB plus the highest sampled PSS in the monitoring session. Use `--once` for a snapshot or Ctrl+C to stop. PSS apportions shared pages and is useful for app-attributed memory; RSS includes every resident shared page. Watch before model load, during generation, and after switching back to Vertex. This samples process memory, not a guaranteed instantaneous peak. Requires wireless/USB ADB, not root. [Android memory diagnostics](https://developer.android.com/tools/dumpsys#meminfo).
+
+### Fresh APK packaging
+
+Every debug/release APK packaging task (including Android test APKs) deletes its previous output and incremental packaging state before writing a new archive. APK packaging is never up-to-date or restored from the build cache. Compilation and other tasks remain incremental. This is intentional: incremental APK ZIP edits retained large unused regions after model removal. Do not remove this behavior; the user requested fresh packaging on every rebuild.

@@ -41,6 +41,10 @@ class AudioTest {
         val s = Settings(vertexProject = "my-credits", vertexLocation = "us-central1")
         assertEquals("https://us-central1-aiplatform.googleapis.com/v1beta1/projects/my-credits/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent", VertexEndpoint.generate(s, "gemini-2.5-flash"))
         assertEquals("https://aiplatform.googleapis.com", VertexEndpoint.base(s.copy(vertexLocation = "global")))
+        assertEquals("https://aiplatform.googleapis.com/v1beta1/projects/my-credits/locations/global/publishers/google/models/gemini-3.1-flash-lite:generateContent", VertexEndpoint.generate(s, "gemini-3.1-flash-lite"))
+        assertTrue(VertexEndpoint.generate(s, s.model).contains("/locations/us-central1/"))
+        assertTrue(VertexEndpoint.generate(s.copy(vertexLocation = "eu"), "gemini-3.1-flash-lite").contains("/locations/eu/"))
+        assertTrue(VertexEndpoint.generate(s.copy(vertexUrl = "http://localhost:8765"), "gemini-3.1-flash-lite").startsWith("http://localhost:8765/"))
     }
     @Test fun longUnicodeTextFitsCloudLimitsWithoutLostText() {
         val text = "文".repeat(3000) + "😄".repeat(1000)

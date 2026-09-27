@@ -24,9 +24,11 @@ User verified physical headphones: connecting did not autoplay, disconnecting pa
 
 ## Implemented
 
+Saved series profiles now have **Delete profile** with confirmation. Deletion removes links to that profile across its series, preserving other profiles/series and returning affected characters to book-specific voices. Edited form state is cleared if its profile is deleted. Source text and exported audio are retained; prepared manifests become stale as appropriate. Deletion is not undoable.
+
 Reader layout follow-up: secondary actions now live under **Book tools** instead of three permanent action rows. Book title and chapter selector are single-line/ellipsized; chapter selection remains directly accessible. User reports one successful real-phone pronunciation test changing Eris to their preferred phonetic spelling; exact replacement was not supplied. This is encouraging user evidence, not broad pronunciation-quality validation.
 
-Layout verification: 52 JVM tests plus assemble/lint passed (`compact-reader-build.log`). Opened and inspected `compact-reader.png` and `book-tools-menu.png`; verified the menu opens Pronunciation. Additional cloud/on-device/LAN engines remain future work, recorded in the feature backlog, not implemented in this layout update.
+Layout verification: 52 JVM tests plus assemble/lint passed (`compact-reader-build.log`). Opened and inspected `compact-reader.png` and `book-tools-menu.png`; verified the menu opens Pronunciation. At that historical layout update, additional engines were future work; on-device Kokoro has since been implemented (see [current work](current-work.md)).
 
 - Reader → Pronunciation: manual Add/Edit/Delete, written phrase and spoken replacement, book/series/global scope, narrator preview. Series scope appears after assigning the book to a series. Boundaries are Unicode-letter/digit-aware, case insensitive; possessives remain intact. Replacements are one-pass, never cascading. Maximum entry lengths and final speech byte limits fail explicitly, never truncate source text.
 - Reader → Series voices: create/join a series, create/edit voice profiles and manually link each book's detected speakers. Linked style/voice applies only when building speech; no series roster, alias or plot description is sent to analysis. Blank profile voice preserves the book's existing choice. Profile labels/style are user-authored and can themselves contain spoilers; use neutral labels. Existing model attribution is not reveal-safe.

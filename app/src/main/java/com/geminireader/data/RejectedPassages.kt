@@ -25,4 +25,10 @@ class RejectedPassages(private val books: BookRepository) {
         }
         if (remaining != records) atomicWrite(file(book), json.encodeToString(remaining))
     }
+
+    @Synchronized fun dismiss(book: String, dismissed: List<RejectedPassage>) {
+        val records = list(book)
+        val remaining = records.filterNot { it in dismissed }
+        if (remaining != records) atomicWrite(file(book), json.encodeToString(remaining))
+    }
 }

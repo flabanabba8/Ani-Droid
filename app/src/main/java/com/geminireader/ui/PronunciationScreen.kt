@@ -30,7 +30,7 @@ import com.geminireader.tts.Speech
         item { Choice("Scope", scope, if (series.isBlank()) listOf("book", "global") else listOf("book", "series", "global")) { scope = it } }
         item { Row {
             Button(onClick = { app.task { val value = entry(); PronunciationRules.validate(value); app.playback.stop(); app.performances.save(app.performances.pronunciations().filter { it.id != value.id && !(it.scope == value.scope && it.owner == value.owner && it.written.equals(value.written, true)) } + value); revision++; editing = null; written = ""; spoken = ""; app.status = "Pronunciation saved" } }, enabled = !app.busy) { Text(if (editing == null) "Add pronunciation" else "Save pronunciation") }
-            TextButton(onClick = { app.task { val value = entry(); PronunciationRules.validate(value); app.playback.preview(Speech("I said ${value.spoken}. Then I said ${value.spoken} again.", app.settings.narratorPrompt, app.settings.narratorVoice, 350)) } }) { Text("Preview") }
+            TextButton(onClick = { app.task { val value = entry(); PronunciationRules.validate(value); app.playback.preview(Speech("I said ${value.spoken}. Then I said ${value.spoken} again.", app.settings.narratorPrompt, app.settings.speechVoice, 350)) } }) { Text("Preview") }
         } }
         if (editing != null) item { TextButton(onClick = { editing = null; written = ""; spoken = "" }) { Text("Cancel edit") } }
         items(entries, key = { it.id }) { value -> Card { Column(Modifier.padding(12.dp)) {

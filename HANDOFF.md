@@ -1,3 +1,5 @@
+> Historical bootstrap plan. For current implementation and release work, start with [the wiki](wiki/README.md), [current work](wiki/current-work.md) and [F-Droid preparation](wiki/fdroid.md). The statements below are not the current app status.
+
 # Gemini Reader: handoff plan
 
 Goal: an Android app like 11reader. It imports PDF, EPUB and other ebooks, shows the text, and reads it aloud
@@ -128,3 +130,7 @@ Iapetus, Orus, Puck, Rasalgethi, Sadachbia, Sadaltager, Schedar, Umbriel. (Zuben
 4. Segmenter + analyzer + voice director + characters screen.
 5. Settings polish, README (API key setup: enable Cloud Text-to-Speech API + Generative Language API on the
    credits project, create a key restricted to those two APIs), wireless-adb instructions, commit.
+
+## Groq update — September 15, 2026
+
+Groq Orpheus English is implemented and live synthesis passed in the Android emulator. English-only per user request; six voices, separate credentials, 200-character splitting, streaming WAV support, and per-book spending. Existing speech selection is preserved. See [Groq](wiki/groq.md) for setup and evidence. This supersedes earlier Groq-pending notes.

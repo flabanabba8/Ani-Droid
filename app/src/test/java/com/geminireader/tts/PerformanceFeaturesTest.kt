@@ -11,6 +11,26 @@ import java.nio.file.Files
 import java.util.Base64
 
 class PerformanceFeaturesTest {
+    @Test fun deletingProfileUnlinksEveryBookInItsSeriesOnly() {
+        val folder = Files.createTempDirectory("reader-delete-profile").toFile()
+        try {
+            val repo = PerformanceRepository(folder)
+            val removed = VoiceProfile(id="remove", label="Remove")
+            val kept = VoiceProfile(id="keep", label="Keep")
+            repo.saveSeries(listOf(Series("one", "One", listOf(removed, kept)), Series("two", "Two", listOf(removed))))
+            repo.saveLink("a", SeriesLink("one", mapOf("alice" to "remove", "bob" to "keep")))
+            repo.saveLink("b", SeriesLink("one", mapOf("other" to "remove")))
+            repo.saveLink("c", SeriesLink("two", mapOf("alice" to "remove")))
+            repo.deleteProfile("one", "remove")
+            assertEquals(listOf(kept), repo.series().first().profiles)
+            assertEquals(mapOf("bob" to "keep"), repo.link("a").voices)
+            assertTrue(repo.link("b").voices.isEmpty())
+            assertEquals("remove", repo.link("c").voices["alice"])
+            assertEquals(listOf(removed), repo.series().last().profiles)
+            repo.deleteProfile("one", "remove") // Idempotent after interrupted cleanup.
+            assertEquals(mapOf("bob" to "keep"), repo.link("a").voices)
+        } finally { folder.deleteRecursively() }
+    }
     @Test fun pronunciationIsBoundedAndDoesNotCascade() {
         val rules = listOf(Pronunciation(written = "Alice", spoken = "Al-iss"), Pronunciation(written = "Al-iss", spoken = "wrong"), Pronunciation(written = "Alice Smith", spoken = "Full name"))
         assertEquals("Al-iss’s palace, malice, Full name and Al-iss.", PronunciationRules.apply("Alice’s palace, malice, Alice Smith and ALICE.", rules))

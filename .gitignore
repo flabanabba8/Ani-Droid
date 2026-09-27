@@ -6,3 +6,5 @@ tools/samples/
 tools/artifacts/
 __pycache__/
 *.log
+
+.cache/kokoro-android/

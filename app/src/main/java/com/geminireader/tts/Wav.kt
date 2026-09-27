@@ -32,6 +32,30 @@ object Wav {
         require(rate in 8000..192000 && audio != null && audio.size % 2 == 0) { "WAV has no valid PCM data" }
         return Pcm(audio, rate)
     }
+    /**
+     * Decode a complete HTTP response whose RIFF/data sizes may be unsigned 0xffffffff.
+     * Only those exact streaming markers are normalized; ordinary truncated chunks
+     * still fail. Keep decode() strict for files in our cache and imported fixtures.
+     */
+    fun decodeStreamed(bytes: ByteArray): Pcm {
+        require(bytes.size >= 44) { "Empty or truncated streamed WAV audio" }
+        val normalized = bytes.copyOf()
+        val buffer = ByteBuffer.wrap(normalized).order(ByteOrder.LITTLE_ENDIAN)
+        require(String(bytes, 0, 4) == "RIFF" && String(bytes, 8, 4) == "WAVE") { "Invalid streamed WAV audio" }
+        if (buffer.getInt(4) == -1) buffer.putInt(4, bytes.size - 8)
+        var offset = 12
+        while (offset + 8 <= bytes.size) {
+            val tag = String(bytes, offset, 4)
+            val size = buffer.getInt(offset + 4)
+            if (tag == "data" && size == -1) {
+                buffer.putInt(offset + 4, bytes.size - offset - 8)
+                break
+            }
+            require(size >= 0 && offset.toLong() + 8 + size <= bytes.size) { "Truncated streamed WAV chunk" }
+            offset += 8 + size + (size % 2)
+        }
+        return Wav.decode(normalized).also { require(it.bytes.isNotEmpty()) { "Empty streamed WAV audio" } }
+    }
     fun trimAndPad(pcm: Pcm, pauseMs: Int): Pcm {
         require(pauseMs in 0..5000)
         val buffer = ByteBuffer.wrap(pcm.bytes).order(ByteOrder.LITTLE_ENDIAN)

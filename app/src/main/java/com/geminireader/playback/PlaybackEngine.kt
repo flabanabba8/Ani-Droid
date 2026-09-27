@@ -19,7 +19,7 @@ class PlaybackEngine(private val app: ReaderApp) {
         setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
         setHandleAudioBecomingNoisy(true)
     }
-    val api = HttpApi()
+    val api = HttpApi(spending = app.spending)
     val cache = AudioCache(File(app.cacheDir, "speech"))
     private var job: Job? = null
     private var generation = 0
@@ -50,7 +50,7 @@ class PlaybackEngine(private val app: ReaderApp) {
     var speed by mutableFloatStateOf(1f)
     var speaker by mutableStateOf("Narrator")
     var prompt by mutableStateOf("")
-    var speechFor: (Segment, Settings, Boolean) -> Speech = { segment, settings, endParagraph -> Speech(segment.text, settings.narratorPrompt, settings.narratorVoice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs) }
+    var speechFor: (Segment, Settings, Boolean) -> Speech = { segment, settings, endParagraph -> Speech(segment.text, settings.narratorPrompt, settings.speechVoice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs) }
     var prepareChapter: suspend (Book, Int, Settings) -> List<Segment> = { book, chapter, _ -> Segmenter.narration(book.chapters[chapter].paragraphs) }
     init {
         player.addListener(object : Player.Listener {
@@ -96,12 +96,14 @@ class PlaybackEngine(private val app: ReaderApp) {
         runCatching { app.books.position(id, position) }.onFailure { app.status = "Could not save playback position" }
     }
     fun stop() { persist(); restoring = true; generation++; job?.cancel(); complete = false; player.stop(); player.clearMediaItems(); active = null; activeBookId = ""; playbackBook = null; loading = false; cache.pinned.clear(); durations.clear(); readyMs = 0; restoring = false }
+    suspend fun stopAndJoin() { val previous = job; stop(); previous?.join() }
     fun toggle() {
         if (activeBookId == app.book?.id && activeChapter == app.chapter && (player.mediaItemCount > 0 || loading)) { player.playWhenReady = !player.playWhenReady; persist() }
         else app.book?.let { play(it, app.chapter, app.paragraph, resume = true) }
     }
     fun changeSpeed(value: Float) { speed = value; player.playbackParameters = PlaybackParameters(value); updateBuffer(); persist() }
     fun play(book: Book, chapter: Int, paragraph: Int, resume: Boolean = false) {
+        if (app.savingPassage) return
         if (app.preparing) { app.status = "Wait for chapter preparation or cancel it before playback"; return }
         speechFailed = false; retryParagraph = paragraph
         app.rememberBook(book.id)
@@ -134,13 +136,16 @@ class PlaybackEngine(private val app: ReaderApp) {
                 preparedSettings = settings
                 require(chapterSegments.isNotEmpty()) { "No text to play" }
                 val direct = speechFor
-                val engine = TtsEngines.create(settings, api)
-                val permits = Semaphore(2)
+                val engine = TtsEngines.create(settings, api, app.kokoro, app.androidTts)
+                // Local inference is serial. Schedule in reading order so a later sentence
+                // cannot acquire the native mutex ahead of the sentence needed for playback.
+                val inFlight = if (settings.engine in listOf("kokoro")) 1 else 2
+                val permits = Semaphore(inFlight)
                 val pending = linkedMapOf<Int, Deferred<Pair<File, Boolean>>>()
                 var scheduled = 0
                 for (index in segments.indices) {
                     while (index > 0 && readyMs >= settings.bufferSeconds.coerceIn(15, 600) * 1000L) delay(100)
-                    val ahead = minOf(segments.size, index + 2)
+                    val ahead = minOf(segments.size, index + inFlight)
                     while (scheduled < ahead) {
                         val i = scheduled++
                         pending[i] = async(Dispatchers.IO) { permits.withPermit {
@@ -199,7 +204,7 @@ class PlaybackEngine(private val app: ReaderApp) {
         job = app.scope.launch {
             try {
                 val s = app.settings
-                val file = cache.get(speech, s, TtsEngines.create(s, api))
+                val file = cache.get(speech, s, TtsEngines.create(s, api, app.kokoro, app.androidTts))
                 if (gen == generation) { player.setMediaItem(MediaItem.Builder().setUri(file.toURI().toString()).setMediaMetadata(MediaMetadata.Builder().setTitle("Voice preview").setArtist(speech.voice).build()).build()); player.prepare(); player.play(); app.status = "Preview ready" }
             } catch (e: CancellationException) { throw e } catch (e: Exception) { app.status = e.message ?: "Preview failed" } finally { loading = false }
         }

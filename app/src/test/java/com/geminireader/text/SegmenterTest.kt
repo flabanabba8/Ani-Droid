@@ -7,6 +7,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SegmenterTest {
+    @Test fun punctuationAfterClosingQuoteStaysWithSpeech() {
+        val text = "Can I say I “had no other choice”?"
+        val spans = Segmenter.dialogue(listOf(text))
+        assertEquals(text, spans.joinToString("") { it.text })
+        assertEquals("“had no other choice”?", spans.last().text)
+        assertEquals("0.0", spans.last().q)
+        assertEquals(text.length, spans.last().end)
+        assertTrue(spans.all { Segmenter.hasSpeech(it.text) })
+        val merged = Segmenter.mergeUnknown(spans, listOf(text), setOf("0.0"))
+        assertEquals(spans, merged)
+    }
+    @Test fun punctuationOnlyDoesNotBecomeSpeech() {
+        assertTrue(Segmenter.narration(listOf("?", "…", "***")).isEmpty())
+        assertTrue(Segmenter.dialogue(listOf("“?”")).isEmpty())
+        val text = "Hello?"
+        val chunks = Segmenter.chunks(2, text, offset = 10, maxChars = 5)
+        assertEquals(listOf(Segment(2, 10, 16, text)), chunks)
+        assertEquals(listOf(Segment(2, 10, 16, text)), Segmenter.sentenceChunks(Segment(2, 10, 16, text), 5))
+    }
     @Test fun supportedQuoteStylesAndApostrophes() {
         for (quote in listOf("“Hello.”", "\"Hello.\"", "‘Hello.’", "«Hello.»", "„Hello.“", "'Hello.'")) {
             val spans = Segmenter.dialogue(listOf("Alice's friend said $quote Then left."))

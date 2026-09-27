@@ -35,17 +35,42 @@ The complete post-MVP brainstorm, with the requested audio export addition. Orig
 
 ## Added by user
 
-17. **Audio export.** IMPLEMENTED: export the generated current chapter queue through Android's document picker, potentially a partial chapter. Lossless WAV; streamed concatenation; export itself makes no synthesis requests. Future: offline chapter preparation, AAC/M4A, chapter markers, metadata and full-book export with explicit confirmation.
+17. **Audio export.** IMPLEMENTED: export the generated current chapter queue through Android's document picker, potentially a partial chapter. Lossless WAV; streamed concatenation; export itself makes no synthesis requests. Full prepared-chapter export is implemented. Future: AAC/M4A, chapter markers, metadata and full-book export with explicit confirmation.
 
 ## Additional TTS providers (future)
 
-18. **More cloud TTS engines.** PLANNED: Groq, OpenAI, and evaluate other established providers (for example Azure, Amazon Polly, ElevenLabs and Cartesia). Prioritize legitimate free tiers and low-cost options. Compare current model availability, monthly allowances, expiry/trial limits, billing requirements, export rights, voice quality, supported languages, latency and direction controls before implementing. Do not label a service permanently free based on promotional credits or assume a provider's free LLM tier includes speech. Provider adapters must preserve pronunciation, cache identity, audio export and accurate capability reporting; never silently switch providers or billing accounts.
-19. **Local TTS.** PLANNED, explicitly deferred by user: Android-installed offline engines first, embedded neural engines next, and authenticated LAN-hosted engines on BROKER_HOST/another machine. Evaluate sherpa-onnx with Kokoro and lighter VITS/Piper-compatible models; verify individual model/runtime licenses and benchmark ANDROID_DEVICE's RAM, battery, thermal behavior and faster-than-playback generation. LAN models may be substantially larger. Local synthesis is not the same as offline playback of downloaded Gemini speech; character analysis may still require a cloud model.
+18. **More cloud TTS engines.** IMPLEMENTED: Groq Orpheus English, [ElevenLabs](elevenlabs.md) and [Cartesia](cartesia.md), including curated/custom voice pickers. See [Groq](groq.md). Other planned providers: OpenAI, and evaluate other established providers (for example Azure, Amazon Polly, other providers). Prioritize legitimate free tiers and low-cost options. Compare current model availability, monthly allowances, expiry/trial limits, billing requirements, export rights, voice quality, supported languages, latency and direction controls before implementing. Do not label a service permanently free based on promotional credits or assume a provider's free LLM tier includes speech. Provider adapters must preserve pronunciation, cache identity, audio export and accurate capability reporting; never silently switch providers or billing accounts.
+19. **Local TTS.** IMPLEMENTED: on-device Kokoro, 28 English voices, Narrator/Distinct modes, shared caching/preparation/export. Speech runs on Android without a server. Google text analysis remains optional for Distinct/rewrite. **QUALITY ISSUE:** user reports crunchy/lo-fi audio and persistent ringing with the int8 model; fp32 fix now built and measured on the emulator; phone quality acceptance remains pending. Do not label subjective audio quality verified. See [Kokoro](kokoro.md).
+20. **Passage editing and recovery.** IMPLEMENTED: long-press editor, explicit unchanged-text Retry generation and reviewed Suggest milder wording for recorded rejections; scene breaks skipped. See [passages](passages.md).
+21. **Spending estimates.** IMPLEMENTED: local total/month/provider/model and per-book estimates, with missing-rate limitations. See [spending](spending.md).
+22. **F-Droid release.** PLANNED: source publication, app license, native source-build/model provenance, signing, offline setup and metadata. See [release plan](fdroid.md).
 
-Research starting points: [Android voice network requirement](https://developer.android.com/reference/android/speech/tts/Voice#isNetworkConnectionRequired()), [sherpa Android engines](https://k2-fsa.github.io/sherpa/onnx/tts/apk-engine.html), [Kokoro Android example](https://k2-fsa.github.io/sherpa/onnx/tts/all/Chinese-English/kokoro-multi-lang-v1_1.html), [Picovoice Orca](https://picovoice.ai/docs/orca/), [Groq changelog](https://console.groq.com/docs/changelog). No additional engines implemented or installed yet. Groq's changelog indicates migration from PlayAI to Orpheus; old API examples should not be treated as current model availability.
+Research starting points: [Android voice network requirement](https://developer.android.com/reference/android/speech/tts/Voice#isNetworkConnectionRequired()), [sherpa Android engines](https://k2-fsa.github.io/sherpa/onnx/tts/apk-engine.html), [Kokoro Android example](https://k2-fsa.github.io/sherpa/onnx/tts/all/Chinese-English/kokoro-multi-lang-v1_1.html), [Picovoice Orca](https://picovoice.ai/docs/orca/), [Groq changelog](https://console.groq.com/docs/changelog). Kokoro is implemented; other engines in this research list remain unimplemented. Groq's changelog indicates migration from PlayAI to Orpheus; old API examples should not be treated as current model availability.
 
 ## Original first implementation milestone
 
-User clarified **three priorities: automatic Vertex renewal, time-based buffering, reliable resume**, plus audio export. Local Wi-Fi via the BROKER_HOST is acceptable. Offline preparation and series casts remain backlog, outside this milestone.
+User clarified **three priorities: automatic Vertex renewal, time-based buffering, reliable resume**, plus audio export. Local Wi-Fi via the BROKER_HOST is acceptable. Offline preparation and manually linked series casts were subsequently implemented.
 
-Pricing estimates must use current verified provider rates or user-supplied rates, never guessed prices. Until billing-rate integration exists, show uncached text size, segment count and PCM storage estimates rather than a misleading dollar figure.
+Pricing estimates must use current verified provider rates or user-supplied rates, never guessed prices. The current local estimate uses supported provider rates; keep unpriced usage visible and do not imply a provider invoice.
+
+## Deepgram — September 15, 2026
+
+Deepgram English Flux TTS supports narrator and distinct character voices, six presets plus other voice models, Groq/Google text analysis and per-book PAYG spending estimates. See [Deepgram](deepgram.md).
+
+## Inworld — September 15, 2026
+
+Inworld TTS-2 adds six voice presets, custom narrator/character/series voices, Groq analysis and per-book usage estimates. See [Inworld](inworld.md).
+
+## Speechify — September 15, 2026
+
+Speechify Simba 3.2 offers six presets, custom narrator/character/series voices and Groq character analysis. See [Speechify](speechify.md).
+
+## Fish Audio — September 15, 2026
+
+Fish Audio S2.1 Pro Free supports six official English presets, custom narrator/character/series voice IDs and Groq analysis. See [Fish Audio](fish.md).
+
+## Android TTS — September 15, 2026
+
+Installed Android TTS engines now support English narrator voices, offline-only filtering, voice refresh and an OS voice-settings shortcut. Existing playback/cache/offline preparation apply. See [Android TTS](android-tts.md).
+
+Kokoro is now an optional post-install download: its model and native runtime are excluded from the APK. Settings provides Download, Cancel and Delete controls. Only the matching CPU architecture is fetched from public sherpa-onnx GitHub releases; the exact selective-8 model is prepared locally using a small bundled recipe. No custom hosting or speech API key is required. Downloads occur only after explicit consent; installed Narrator speech works offline. See [Kokoro](kokoro.md).

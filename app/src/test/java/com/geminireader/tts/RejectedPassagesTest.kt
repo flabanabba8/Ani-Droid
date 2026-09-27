@@ -7,6 +7,23 @@ import org.junit.Test
 import java.nio.file.Files
 
 class RejectedPassagesTest {
+    @Test fun dismissalPersistsAndAllowsFutureRejections() {
+        val root = Files.createTempDirectory("dismissed-passages").toFile()
+        try {
+            val books = BookRepository(root)
+            val records = RejectedPassages(books)
+            val segment = Segment(0, 0, 1, "?")
+            records.record("book", 0, segment, "SAFETY")
+            records.record("book", 1, segment, "SAFETY")
+            records.record("other", 0, segment, "SAFETY")
+            records.dismiss("book", records.list("book").filter { it.chapter == 0 })
+            val restored = RejectedPassages(books)
+            assertEquals(listOf(1), restored.list("book").map { it.chapter })
+            assertEquals(1, restored.list("other").size)
+            restored.record("book", 0, segment, "SAFETY")
+            assertEquals(2, restored.list("book").size)
+        } finally { root.deleteRecursively() }
+    }
     @Test fun persistsExactPassageAndSeparatesBooksAndChapters() {
         val root = Files.createTempDirectory("rejected-passages").toFile()
         try {

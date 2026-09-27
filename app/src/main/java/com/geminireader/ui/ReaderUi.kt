@@ -5,6 +5,8 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,6 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import android.app.Activity
@@ -36,6 +39,8 @@ import com.geminireader.data.BookMeta
 import java.io.File
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 
 @Composable fun ReaderUi(app: ReaderApp) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) app.handle(Intent(Intent.ACTION_VIEW, uri)) }
@@ -98,7 +103,14 @@ import kotlinx.coroutines.launch
     val chapter = book.chapters[app.chapter]
     var toc by remember { mutableStateOf(false) }
     var bookTools by remember { mutableStateOf(false) }
-    var inspecting by remember { mutableStateOf<Segment?>(null) }
+    var inspecting by remember(book.id, app.chapter) { mutableStateOf<Segment?>(null) }
+    var editing by rememberSaveable(book.id, app.chapter) { mutableStateOf<Int?>(null) }
+    var draft by rememberSaveable(book.id, app.chapter) { mutableStateOf("") }
+    var original by rememberSaveable(book.id, app.chapter) { mutableStateOf("") }
+    var showRewriteOriginal by remember(editing) { mutableStateOf(false) }
+    var rewriting by remember { mutableStateOf(false) }
+    var rewriteJob by remember { mutableStateOf<Job?>(null) }
+    var rewriteMessage by rememberSaveable(book.id, app.chapter) { mutableStateOf("") }
     var exporting by remember { mutableStateOf<PlaybackEngine.ExportSelection?>(null) }
     var preparing by remember { mutableStateOf(false) }
     var removingPrepared by remember { mutableStateOf(false) }
@@ -108,7 +120,7 @@ import kotlinx.coroutines.launch
     var follow by remember { mutableStateOf(true) }
     val playback = app.playback
     val rejected = remember(book.id, app.chapter, app.rejectionRevision) {
-        app.rejectedPassages.list(book.id).filter { it.chapter == app.chapter }
+        app.rejectedPassages.list(book.id).filter { it.chapter == app.chapter && !Segmenter.isSceneBreak(chapter.paragraphs.getOrNull(it.segment.paragraph).orEmpty()) }
     }
     val active = playback.active?.takeIf { playback.activeBookId == book.id && playback.activeChapter == app.chapter }
     LaunchedEffect(book.id, app.chapter) { list.scrollToItem(app.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)) }
@@ -153,19 +165,28 @@ import kotlinx.coroutines.launch
                 }
                 Column {
                 if (rejected.any { it.segment.paragraph == index }) Text("Provider rejected this passage · ${rejected.filter { it.segment.paragraph == index }.map { it.reason }.distinct().joinToString()}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-                Text(annotated, Modifier.fillMaxWidth().combinedClickable(onClick = { app.paragraph = index; playback.play(book, app.chapter, index) }, onLongClick = {
+                if (rejected.any { it.segment.paragraph == index }) TextButton(enabled = !app.busy, onClick = {
+                    editing = index; original = text; draft = text; rewriteMessage = ""
+                }) { Text("Rewrite rejected passage") }
+                if (rejected.any { it.segment.paragraph == index }) TextButton(enabled = !app.busy && !app.preparing, onClick = {
+                    app.paragraph = index; playback.stop(); playback.play(book, app.chapter, index)
+                }) { Text("Retry generation") }
+                Text(annotated, Modifier.fillMaxWidth().combinedClickable(onClick = { if (!Segmenter.isSceneBreak(text)) { app.paragraph = index; playback.play(book, app.chapter, index) } }, onLongClick = {
                     inspecting = active?.takeIf { it.paragraph == index } ?: Segmenter.dialogue(chapter.paragraphs).firstOrNull { it.paragraph == index && it.q != null } ?: Segment(index, 0, text.length, text)
                 }), fontFamily = FontFamily.Serif, fontSize = app.settings.fontSize.sp, lineHeight = (app.settings.fontSize * 1.5f).sp)
                 }
             }
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
-        if (rejected.isNotEmpty() && chapter.paragraphs.isNotEmpty()) TextButton(onClick = {
+        if (rejected.isNotEmpty() && chapter.paragraphs.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        TextButton(onClick = {
             follow = false
             val target = rejected.first().segment.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)
             // Scroll animations require Compose's frame clock, not the application worker scope.
             readerScope.launch { list.animateScrollToItem(target) }
         }) { Text("Show rejected passage (${rejected.size})", color = MaterialTheme.colorScheme.error) }
+        TextButton(enabled = !app.busy, onClick = { app.dismissRejections(book.id, rejected) }) { Text("Dismiss") }
+        }
         if (playback.speechFailed && playback.activeBookId == book.id) TextButton(onClick = { playback.retrySpeech() }) { Text("Retry failed speech") }
         if (playback.activeBookId == book.id) Text(BufferPolicy.label(playback.readyMs), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -192,6 +213,26 @@ import kotlinx.coroutines.launch
         val speech = VoiceDirector.direct(segment, app.settings, character, line?.delivery.orEmpty(), true)
         AlertDialog(onDismissRequest = { inspecting = null }, title = { Text(character?.name ?: "Narrator") }, text = {
             LazyColumn {
+                if (Segmenter.isSceneBreak(chapter.paragraphs[segment.paragraph])) item { Text("Scene break: skipped during speech.") }
+                if (rejected.any { it.segment.paragraph == segment.paragraph }) {
+                    item { TextButton(enabled = !app.busy, onClick = {
+                        app.dismissRejections(book.id, rejected.filter { it.segment.paragraph == segment.paragraph })
+                        inspecting = null
+                    }) { Text("Dismiss rejection") } }
+                    item { TextButton(enabled = !app.busy, onClick = {
+                        editing = segment.paragraph; original = chapter.paragraphs[segment.paragraph]; draft = original; rewriteMessage = ""; inspecting = null
+                    }) { Text("Rewrite rejected passage") } }
+                    item { TextButton(enabled = !app.busy && !app.preparing, onClick = {
+                        app.paragraph = segment.paragraph; inspecting = null; playback.stop(); playback.play(book, app.chapter, segment.paragraph)
+                    }) { Text("Retry generation") } }
+                }
+                item { TextButton(enabled = !app.busy, onClick = {
+                    editing = segment.paragraph
+                    original = chapter.paragraphs[segment.paragraph]
+                    draft = original
+                    rewriteMessage = ""
+                    inspecting = null
+                }) { Text("Edit passage") } }
                 item { Text(segment.text) }; item { Text("Voice: ${speech.voice}\n${speech.prompt}", Modifier.padding(vertical = 16.dp)) }
                 val quotes = Segmenter.dialogue(chapter.paragraphs).filter { it.paragraph == segment.paragraph && it.q != null }.distinctBy { it.q }
                 if (quotes.size > 1 || segment.q == null) items(quotes) { quote -> TextButton(onClick = { inspecting = quote }) { Text("Inspect ${quote.q}: ${quote.text.take(60)}") } }
@@ -202,5 +243,41 @@ import kotlinx.coroutines.launch
                 }
             }
         }, confirmButton = { TextButton(onClick = { inspecting = null }) { Text("Close") } })
+    }
+    editing?.let { index ->
+        AlertDialog(onDismissRequest = { if (!app.busy) { rewriteJob?.cancel(); editing = null } }, title = { Text("Edit passage") }, text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Changes are saved to this imported book and used for speech. Saving stops playback.")
+                if (rejected.any { it.segment.paragraph == index }) {
+                    Text("Suggest milder wording with ${app.settings.analysisModel}, then review before saving. May incur API costs; speech may still be rejected.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(enabled = !app.busy && !rewriting && draft.isNotBlank(), onClick = {
+                        rewriting = true; rewriteMessage = ""
+                        val source = draft; val ch = app.chapter
+                        rewriteJob = readerScope.launch {
+                            try {
+                                val suggestion = app.rewritePassage(book, ch, index, original, source)
+                                draft = suggestion
+                                rewriteMessage = if (suggestion == source) "The model suggested no changes. You can edit manually." else "Rewrite ready. Review the text, then Save to apply it."
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { rewriteMessage = e.message ?: "Rewrite failed. Your draft is unchanged." }
+                            finally { rewriting = false }
+                        }
+                    }) { Text(if (rewriting) "Rewriting…" else "Suggest milder wording") }
+                    if (rewriting) LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+                if (rewriteMessage.isNotBlank()) Text(rewriteMessage, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = draft, onValueChange = { draft = it }, label = { Text("Passage text") },
+                    enabled = !app.busy && !rewriting, isError = draft.isBlank(), minLines = 3, maxLines = 6,
+                    modifier = Modifier.fillMaxWidth(), supportingText = { if (draft.isBlank()) Text("Enter passage text") })
+                if (draft != original) {
+                    TextButton(onClick = { showRewriteOriginal = !showRewriteOriginal }) { Text(if (showRewriteOriginal) "Hide original" else "Show original") }
+                    if (showRewriteOriginal) Text(original, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }, confirmButton = {
+            TextButton(enabled = !app.busy && !rewriting && draft.isNotBlank() && draft != original, onClick = {
+                app.editPassage(book.id, app.chapter, index, original, draft) { editing = null }
+            }) { Text("Save") }
+        }, dismissButton = { TextButton(enabled = !app.busy, onClick = { rewriteJob?.cancel(); editing = null }) { Text("Cancel") } })
     }
 }

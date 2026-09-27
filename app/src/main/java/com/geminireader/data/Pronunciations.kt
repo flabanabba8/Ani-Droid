@@ -18,6 +18,12 @@ class PerformanceRepository(private val root: File) {
     fun links(): Map<String, SeriesLink> = read("series-links.json", emptyMap())
     fun link(book: String): SeriesLink = links()[book] ?: SeriesLink()
     fun saveLink(book: String, link: SeriesLink) = atomicWrite(File(root, "series-links.json"), json.encodeToString(links() + (book to link)))
+    fun deleteProfile(seriesId: String, profileId: String) {
+        // Remove the profile first: any interrupted link cleanup still safely falls back to book voices.
+        saveSeries(series().map { if (it.id == seriesId) it.copy(profiles = it.profiles.filterNot { p -> p.id == profileId }) else it })
+        val updated = links().mapValues { (_, link) -> if (link.series == seriesId) link.copy(voices = link.voices.filterValues { it != profileId }) else link }
+        atomicWrite(File(root, "series-links.json"), json.encodeToString(updated))
+    }
     fun applicable(book: String): List<Pronunciation> = pronunciations().filter { it.scope == "global" || (it.scope == "book" && it.owner == book) || (it.scope == "series" && it.owner.isNotBlank() && it.owner == link(book).series) }
 }
 

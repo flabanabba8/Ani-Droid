@@ -2,11 +2,21 @@
 
 Previously Gemini Reader. The Android package remains `com.geminireader` so upgrades retain books, settings, and audio. Existing workspace paths and token-broker service names remain unchanged for compatibility.
 
-Personal Android reader built with Compose and Media3. Package: `com.geminireader`. Android 8+ (API 26); target API 36, compile API 37.2. The handoff's pinned Compose, core, lifecycle and OkHttp versions require compile SDK 37 or later according to their AAR metadata. The emulator remains API 36.
+Android reader built with Compose and Media3. Package: `com.geminireader`. Android 8+ (API 26); target API 36, compile API 37.2. The handoff's pinned Compose, core, lifecycle and OkHttp versions require compile SDK 37 or later according to their AAR metadata. The emulator remains API 36.
+
+## Current capabilities and release plans
+
+Read and listen with optionally downloaded on-device Kokoro (28 English voices) or optional Google speech services. Includes passage editing, explicit rejected-passage retry/rewrite, per-book spending estimates, pronunciation rules, series voices and offline chapter preparation. Kokoro Narrator works offline after installation; character analysis and requested rewrites still use Google.
+
+See [current implementation](wiki/current-work.md), [passage recovery](wiki/passages.md), [spending](wiki/spending.md), [privacy](PRIVACY.md), and [verification](VERIFICATION.md).
+
+**F-Droid is the intended release channel.** Submission preparation is pending: the app license/public repository, native dependency source-build path, model provenance, release signing and metadata still need work. See the [F-Droid release plan](wiki/fdroid.md). This repository's dependency notices do not yet establish a license for the app itself.
 
 ## Local development
 
 Project knowledge base: [LLM wiki](wiki/README.md), [complete feature backlog](wiki/features.md), [current milestone](wiki/current-work.md).
+
+The Kokoro build also requires Python 3.11+ and `uv` for the first selective-model conversion. It downloads checksum-pinned runtime/model archives, then quantizes with pinned ONNX tooling and verifies that the result matches the benchmarked model. These downloads are a development workflow; the F-Droid build route remains pending.
 
 No system packages or sudo are needed. The setup script installs Temurin JDK 21 and the official Android SDK in your home directory. System Java 25 is not used.
 
@@ -114,6 +124,7 @@ To use the host mock from the phone, select that device with `export ANDROID_SER
 - **Performance** keeps one narrator voice and directs character-specific changes in pitch, pace, timbre and delivery. **Distinct** picks a gender-matched voice, with per-character overrides. **Narrator** skips analysis. Failed analysis falls back to narration and shows the reason.
 - All 30 voices have researched gender/trait profiles shown in the voice selectors. Analysis receives this catalog and recommends a voice for distinct mode; manual overrides take precedence. Directions adapt pitch relative to the actual selected voice, not a stale narrator-gender setting. See [voice research and direction](docs/voices.md) for the complete catalog, sources and limitations.
 - Open **Characters** to edit a performance or voice, preview it, or analyze the whole book. Long-press reader text to inspect quote assignments and prompts, then choose a speaker. Manual assignments are stored separately and survive reanalysis.
+- Long-press a paragraph and choose **Edit passage** to change its text, then **Save** or **Cancel**. Edits persist in the imported copy and are used for speech. Blank passages cannot be saved. Saving stops playback and offline preparation, resets chapter analysis, and keeps manual speaker assignments only for unchanged quotes. Prepare the chapter again to update offline audio.
 - Analysis caches, the cast, metadata and reading position live under `files/books/{id}`. Settings use DataStore. Audio is an LRU cache keyed by engine, endpoint/project, model, voice, language, prompt, text and pause. Currently used/prefetched files are protected from eviction; they can temporarily exceed a very small cache limit. Clearing cache stops playback.
 
 ### Analysis, chunking and paragraph jumps
@@ -132,6 +143,14 @@ To use the host mock from the phone, select that device with `export ANDROID_SER
 
 **Export:** choose **Export audio → Save WAV**, then save with Android's document picker. A matching fully prepared chapter exports in full; otherwise export includes only the generated current queue, potentially a partial chapter. It includes entire segments, not just audio remaining after the playhead. WAV is mono 16-bit PCM at original 1× speed with generated pauses. Export itself makes no synthesis requests; normal buffering can continue. Temporary disk space is required. Compressed M4A and chapter markers are not implemented.
 
+### Kokoro speech
+
+Choose **Settings → Speech engine → kokoro** for speech generated directly on your Android phone. After tapping Download Kokoro, the installed model supports 28 English voices, narrator/distinct modes, audio caching, offline preparation and WAV export. Narrator mode works offline without a server or API key. See [Kokoro setup and verification](wiki/kokoro.md).
+
+### Spending estimates
+
+**Settings → Spending estimate** shows recorded total, this month, and per-book costs for speech and character analysis. Tracking starts with this version and persists on this device. Previews without book context are listed separately. Estimates use published paid rates before credits/free tiers/taxes; unknown rates and missing usage are flagged. Cached playback adds no cost. Open Google Cloud billing from the card to check actual charges. See [accounting details and pricing sources](wiki/spending.md).
+
 ### Offline chapters, pronunciation and series voices
 
 Reader tools are grouped under **Book tools** beside the chapter selector. Open that menu for Characters, Pronunciation, Series voices, Export audio, and preparation/cancellation. The title and chapter selector now occupy two compact lines instead of a stack of action rows.
@@ -140,6 +159,8 @@ Reader tools are grouped under **Book tools** beside the chapter selector. Open 
 - **Pronunciation** has manual written-word/phrase and “Speak as” fields, Add/Edit/Delete, narrator Preview, and book/global/series scopes. Series scope requires a linked series. Whole-word/phrase replacements affect only TTS; no source text is modified. A phonetic spelling is a hint, not a guaranteed phoneme sequence. Preview may incur synthesis charges.
 - **Series voices** lets you create/join a series, create/edit voice profiles and explicitly link a detected speaker in each book. Only user-authored performance/voice data is reused; no model-generated future-volume aliases, descriptions or relationships are imported. This avoids automatic identity merging, **not all spoilers**: current analysis still reads the whole chapter. Strict reveal-gated analysis is deferred. See [design and verification](wiki/next-milestone.md).
 - Failed generations (text instead of audio, missing audio data, or empty PCM/WAV) automatically retry with unchanged text and prompts: up to three generation attempts for Vertex and Cloud TTS, or two on Gemini generateContent followed by up to three on the Interactions fallback. Backoff starts at 0.5 seconds and doubles; stopping playback cancels backoff. HTTP retries remain separately bounded (up to four attempts for rate limits/server errors, two for timeouts). Explicit content blocks are not automatically retried or sent to the fallback endpoint. Exhausted attempts retain **Retry failed speech**. Malformed audio and configuration errors are surfaced instead of blindly retried. The reported jacket paragraph succeeded unchanged in a live smoke test, so its original failure was not conclusively diagnosed.
+- **Retry generation** retries a rejected paragraph unchanged. It appears beside **Rewrite rejected passage** and directly in the long-press menu. Asterisk scene breaks such as `***` are skipped during speech.
+- **Rewrite rejected passage** opens the passage editor from a red rejection marker. Choose **Suggest milder wording** to use the selected text analysis model, review the suggestion (or **Show original**), and **Save** to apply it. Cancel keeps the book unchanged. Rewrite requests may incur costs and are included under the book in spending estimates. Rewrites do not guarantee speech acceptance; a refusal or incomplete rewrite keeps your draft unchanged.
 - Provider-blocked book passages are highlighted red with the provider's reason, including failures during prefetch or offline preparation. **Show rejected passage** jumps to the first marked passage in the current chapter. Markers persist across app restarts and clear after successful generation of the marked span. They identify the requested passage, not a specific offending word or proof that the text is explicit. Older failures cannot be reconstructed retroactively. Voice/settings previews without a book location are not marked. Test using the mock server's `--block-audio` flag (Gemini/Vertex audio requests).
 
 Live Vertex OAuth, text generation (`gemini-2.5-flash`), and speech generation (`gemini-3.1-flash-tts-preview`, Charon, 24 kHz PCM) succeeded in `us-central1` using the BROKER_HOST's user ADC and project `YOUR_PROJECT_ID`. Real audio also played on the emulator through broker-backed auth. This does not establish whether promotional credits cover the charges, broad attribution accuracy, or subjective voice quality. The headless emulator is muted. See `VERIFICATION.md` for results.
@@ -151,3 +172,37 @@ The development checks include `./gradlew testDebugUnitTest assembleDebug lintDe
 ## Toolchain
 
 AGP 9.4.0 with built-in Kotlin, Kotlin Compose/serialization plugins 2.4.20, Gradle 9.7.1, JDK 21. The wrapper pins SHA-256 `acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a`; see [Gradle release checksums](https://gradle.org/release-checksums/). Kotlin serialization 1.11.0 is the stable release used rather than 1.12.0-RC.
+
+## Groq TTS
+
+Groq Orpheus English is available in Settings, with six voices, a separate API key, Narrator/Distinct modes, and per-book spending estimates. Groq-hosted GPT-OSS 20B (default) or 120B handles character analysis, voice recommendations and requested rewrites with the same key. See [Groq setup and limitations](wiki/groq.md).
+
+## ElevenLabs
+
+Eight preset voices plus custom voice ID entry for narrator, characters and series profiles. Three speech models and optional Groq character analysis. See [ElevenLabs setup](wiki/elevenlabs.md).
+
+## Cartesia
+
+Sonic 3.6 with six presets, custom voice IDs and optional Groq character analysis. See [Cartesia setup and development budget](wiki/cartesia.md).
+
+## Deepgram
+
+English Flux TTS, six preset voices plus other voice models, optional Groq character analysis and per-book spending estimates. See [Deepgram setup](wiki/deepgram.md).
+
+## Inworld
+
+TTS-2 speech with six presets, custom voice IDs, optional Groq character analysis and per-book spending estimates. See [Inworld setup](wiki/inworld.md).
+
+## Speechify
+
+English Simba 3.2, six presets plus custom voice IDs, Groq character analysis and per-book usage estimates. See [Speechify setup](wiki/speechify.md).
+
+## Fish Audio
+
+S2.1 Pro Free with six official English presets, custom IDs, Groq character analysis and per-book request tracking. See [Fish Audio setup](wiki/fish.md).
+
+## Android speech engines
+
+Use an installed Android TTS engine and English narrator voice. Offline voices are selected by default; no speech API key is needed. See [Android TTS setup](wiki/android-tts.md).
+
+Kokoro is now an optional post-install download: its model and native runtime are excluded from the APK. Settings provides Download, Cancel and Delete controls. Only the matching CPU architecture is fetched from public sherpa-onnx GitHub releases; the exact selective-8 model is prepared locally using a small bundled recipe. No custom hosting or speech API key is required. Downloads occur only after explicit consent; installed Narrator speech works offline. See [Kokoro](wiki/kokoro.md).

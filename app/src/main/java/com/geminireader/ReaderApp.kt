@@ -24,12 +24,21 @@ import java.io.File
 class ReaderApp : Application() {
     private val intentMutex = Mutex()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val androidTts by lazy { AndroidTtsClient(this) }
+    val kokoro by lazy { KokoroTtsClient(this) }
+    val spending by lazy { SpendingTracker(File(filesDir, "spending.json")) }
     lateinit var books: BookRepository
     val rejectedPassages by lazy { RejectedPassages(books) }
     var rejectionRevision by mutableStateOf(0)
+    fun dismissRejections(bookId: String, rejected: List<RejectedPassage>) = task {
+        withContext(Dispatchers.IO) { rejectedPassages.dismiss(bookId, rejected) }
+        rejectionRevision++
+    }
     suspend fun bookAudio(bookId: String, chapter: Int, segment: Segment, generate: suspend () -> File): File {
         try {
-            val file = generate()
+            val title = book?.takeIf { it.id == bookId }?.title
+                ?: withContext(Dispatchers.IO) { books.load(bookId).title }
+            val file = withContext(SpendingBook(bookId, title)) { generate() }
             withContext(Dispatchers.IO) { rejectedPassages.resolved(bookId, chapter, segment) }
             withContext(Dispatchers.Main) { rejectionRevision++ }
             return file
@@ -53,7 +62,7 @@ class ReaderApp : Application() {
         status = "Prepared chapter audio removed; it can be generated again"
     }
     fun prepareOffline() {
-        if (preparing) return
+        if (preparing || savingPassage) return
         val target = book ?: return
         val ch = chapter; val s = settings
         playback.stop(); preparing = true
@@ -68,7 +77,7 @@ class ReaderApp : Application() {
                     PreparedLine(segment, speech, speaker(segment), "${AudioCache.key(speech, s)}.wav")
                 })
                 withContext(Dispatchers.IO) { offline.save(target.id, ch, plan) }
-                val engine = TtsEngines.create(s, playback.api)
+                val engine = TtsEngines.create(s, playback.api, kokoro, androidTts)
                 for ((index, line) in plan.lines.withIndex()) {
                     ensureActive(); status = "Preparing chapter: ${index + 1}/${plan.lines.size} segments"
                     withContext(Dispatchers.IO) {
@@ -131,7 +140,61 @@ class ReaderApp : Application() {
     fun validateSettings(value: Settings): Settings {
         require(value.model.matches(Regex("[a-zA-Z0-9._/-]+")) && value.analysisModel.matches(Regex("[a-zA-Z0-9._/-]+"))) { "Enter valid model names" }
         require(value.narratorVoice in VoiceDirector.female + VoiceDirector.male) { "Select a supported narrator voice" }
-        require(value.engine in listOf("vertex", "cloud", "gemini")) { "Select a supported engine" }
+        require(value.engine in Settings.engines) { "Select a supported engine" }
+        if (value.engine == "android") {
+            require(value.androidTtsEngine.isNotBlank() && value.androidTtsVoice.isNotBlank()) { "Select an installed Android speech engine and voice." }
+            require(value.characterMode == "narrator") { "Android TTS currently supports Narrator mode." }
+        }
+        if (value.engine == "fish") {
+            require(FishVoices.valid(value.fishVoice)) { "Enter a valid Fish voice ID" }
+            require(value.fishAnalysisEngine in listOf("groq", "vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.groqTextModel in GroqAnalysis.models) { "Select a Groq analysis model" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Select Narrator or Distinct mode" }
+        }
+        if (value.engine == "speechify") {
+            require(SpeechifyVoices.valid(value.speechifyVoice)) { "Enter a valid Speechify voice ID" }
+            require(value.speechifyAnalysisEngine in listOf("groq", "vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.groqTextModel in GroqAnalysis.models) { "Select a Groq analysis model" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Select Narrator or Distinct mode" }
+        }
+        if (value.engine == "inworld") {
+            require(InworldVoices.valid(value.inworldVoice)) { "Enter a valid Inworld voice ID" }
+            require(value.inworldAnalysisEngine in listOf("groq", "vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.groqTextModel in GroqAnalysis.models) { "Select a Groq analysis model" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Select Narrator or Distinct mode" }
+        }
+        if (value.engine == "deepgram") {
+            require(DeepgramVoices.valid(value.deepgramVoice)) { "Enter a valid Deepgram voice ID" }
+            require(value.deepgramAnalysisEngine in listOf("groq", "vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.groqTextModel in GroqAnalysis.models) { "Select a Groq analysis model" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Select Narrator or Distinct mode" }
+        }
+        if (value.engine == "cartesia") {
+            require(CartesiaVoices.valid(value.cartesiaVoice)) { "Enter a valid Cartesia voice ID" }
+            require(value.cartesiaModel in CartesiaVoices.models) { "Select an Cartesia model" }
+            require(value.cartesiaAnalysisEngine in listOf("groq", "vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.groqTextModel in GroqAnalysis.models) { "Select a Groq analysis model" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Select Narrator or Distinct mode" }
+        }
+        if (value.engine == "elevenlabs") {
+            require(ElevenVoices.valid(value.elevenVoice)) { "Enter a valid ElevenLabs voice ID" }
+            require(value.elevenModel in ElevenVoices.models) { "Select an ElevenLabs model" }
+            require(value.elevenAnalysisEngine in listOf("groq", "vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.groqTextModel in GroqAnalysis.models) { "Select a Groq analysis model" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Select Narrator or Distinct mode" }
+        }
+        if (value.engine == "groq") {
+            require(value.groqTextModel in GroqAnalysis.models) { "Select a Groq analysis model" }
+            require(value.groqModel in com.geminireader.analysis.GroqVoices.models) { "Select a Groq model" }
+            require(value.groqVoice in com.geminireader.analysis.GroqVoices.namesFor(value.groqModel)) { "Select a Groq voice" }
+            require(value.groqAnalysisEngine in listOf("groq", "vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Groq supports Narrator or Distinct mode" }
+        }
+        if (value.engine == "kokoro") {
+            require(value.kokoroVoice in KokoroVoices.names) { "Select a Kokoro narrator voice" }
+            require(value.kokoroAnalysisEngine in listOf("vertex", "gemini")) { "Select a text analysis provider" }
+            require(value.characterMode in listOf("narrator", "distinct")) { "Kokoro supports Narrator or Distinct mode" }
+        }
         VertexAuth.validate(value)
         if (value.engine == "vertex" && value.vertexProject.isNotBlank()) VertexEndpoint.generate(value, value.model)
         for (url in listOf(value.cloudUrl, value.geminiUrl, value.vertexUrl).filter { it.isNotBlank() }) {
@@ -147,17 +210,27 @@ class ReaderApp : Application() {
         settingsStore.save(updated); settings = updated
     }
     fun saveSettings(value: Settings, test: Boolean = false) = task {
-        val valid = validateSettings(value); playback.stop(); settingsStore.save(valid); settings = valid; status = "Settings saved"
+        val valid = validateSettings(value)
+        if (settings.engine == "kokoro" && valid.engine != "kokoro") {
+            preparationJob?.cancelAndJoin(); playback.stopAndJoin(); kokoro.release()
+        } else if (settings.engine == "android" && valid.engine != "android") {
+            preparationJob?.cancelAndJoin(); playback.stopAndJoin(); androidTts.release()
+        } else playback.stop()
+        settingsStore.save(valid); settings = valid; status = "Settings saved"
         if (test) {
             val text = "Hello. Your reader is ready for the next chapter."
             playback.preview(VoiceDirector.direct(Segment(0, 0, text.length, text), valid, null, "", true))
         }
     }
+    fun deleteKokoro() = task {
+        preparationJob?.cancelAndJoin(); playback.stopAndJoin(); kokoro.deleteDownloaded()
+        status = "Kokoro downloads deleted"
+    }
     fun fetchModels(value: Settings) = task {
         val valid = validateSettings(value)
         val names = mutableListOf<String>(); var next = ""
         do {
-            val vertex = valid.engine == "vertex"
+            val vertex = valid.textEngine == "vertex"
             val endpoint = if (vertex) "${VertexEndpoint.base(valid)}/v1beta1/publishers/google/models" else "${valid.geminiUrl.trimEnd('/')}/v1beta/models"
             val url = endpoint.toHttpUrl().newBuilder().addQueryParameter("pageSize", "100")
             if (next.isNotEmpty()) url.addQueryParameter("pageToken", next)
@@ -209,8 +282,20 @@ class ReaderApp : Application() {
                 speech.copy(text = spoken)
             }
             playback.speakerLabel = { segment -> byId[lines[segment.q]?.speaker]?.name ?: "Narrator" }
-            if (s.characterMode == "narrator" || result.lines.isEmpty()) Segmenter.narration(paragraphs)
+            val segments = if (s.characterMode == "narrator" || result.lines.isEmpty()) Segmenter.narration(paragraphs)
             else Segmenter.mergeUnknown(Segmenter.dialogue(paragraphs), paragraphs, result.lines.filter { it.speaker in byId }.map { it.q }.toSet())
+            when (s.engine) {
+                "kokoro" -> segments.flatMap { Segmenter.sentenceChunks(it) }
+                "android" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "fish" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "speechify" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "inworld" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "deepgram" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "cartesia" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "elevenlabs" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "groq" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 200) }
+                else -> segments
+            }
         }
         scope.launch { settingsStore.flow.collect { settings = it } }; scope.launch { refresh() }
     }
@@ -229,6 +314,31 @@ class ReaderApp : Application() {
     }
     suspend fun loadCharacters() { val id = book?.id ?: return; val ch = chapter; val values = withContext(Dispatchers.IO) { analyzer.cast(id) to (analyzer.cached(id, ch) ?: Analysis()) }; if (book?.id == id && chapter == ch) { cast = values.first; analysis = values.second } }
     fun selectChapter(index: Int) { playback.stop(); chapter = index; paragraph = 0; savePosition(); scope.launch { loadCharacters() } }
+    suspend fun rewritePassage(target: Book, ch: Int, index: Int, original: String, draft: String): String {
+        val current = withContext(Dispatchers.IO) { books.load(target.id) }
+        require(current.chapters.getOrNull(ch)?.paragraphs?.getOrNull(index) == original) { "Passage changed; reopen the editor before rewriting" }
+        return withContext(SpendingBook(target.id, target.title)) { PassageRewriter(playback.api).rewrite(draft, settings) }
+    }
+    var savingPassage by mutableStateOf(false)
+        private set
+    fun editPassage(id: String, ch: Int, index: Int, original: String, replacement: String, saved: () -> Unit) = task {
+        require(replacement.isNotBlank()) { "Passage cannot be empty" }
+        if (savingPassage) return@task
+        savingPassage = true
+        try {
+            preparationJob?.cancelAndJoin()
+            playback.stopAndJoin()
+            analyzer.cancelBook(id)
+            val updated = withContext(Dispatchers.IO) { books.editPassage(id, ch, index, original, replacement) }
+            if (book?.id == id) {
+                book = updated
+                loadCharacters()
+            }
+            rejectionRevision++
+            status = "Passage saved. Play to read the updated text."
+            saved()
+        } finally { savingPassage = false }
+    }
     fun saveCharacter(value: Character) = task { val id = book?.id ?: return@task; playback.stop(); cast = cast.map { if (it.id == value.id) value.copy(edited = true) else it }; withContext(Dispatchers.IO) { analyzer.saveCast(id, cast) }; status = "Character saved" }
     fun reassign(q: String, speaker: String) = task { val id = book?.id ?: return@task; playback.stop(); withContext(Dispatchers.IO) { analyzer.reassign(id, chapter, q, speaker) }; loadCharacters(); status = "Speaker updated" }
     fun analyzeWholeBook() = task {
@@ -258,6 +368,11 @@ class ReaderApp : Application() {
                 loadCharacters()
             }
         }
+        if (BuildConfig.DEBUG && intent.hasExtra("debug_analysis_model")) {
+            val updated = validateSettings(settings.copy(analysisModel = intent.getStringExtra("debug_analysis_model")!!))
+            playback.stop(); settingsStore.save(updated); settings = updated
+            status = "Analysis model updated"
+        }
         if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_broker", false)) {
             val file = File(filesDir, "debug-broker.json")
             val config = try { json.parseToJsonElement(file.readText()).jsonObject } finally { file.delete() }
@@ -275,6 +390,80 @@ class ReaderApp : Application() {
                 vertexBrokerUrl = "", vertexBrokerPin = "", vertexBrokerSecret = ""))
             playback.stop(); settingsStore.save(updated); settings = updated
             status = "Vertex credentials updated"
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_groq_analysis", false)) {
+            val updated = settings.copy(groqAnalysisEngine = "groq",
+                characterMode = if (settings.engine == "groq") "distinct" else settings.characterMode)
+            settingsStore.save(updated); settings = updated
+            status = "Groq character analysis enabled"
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_fish_key", false)) {
+            val file = File(filesDir, "debug-fish-key")
+            val key = try { file.readText().trim() } finally { file.delete() }
+            require(key.isNotBlank() && !key.any { it.isWhitespace() }) { "Invalid Fish key" }
+            val updated = settings.copy(fishApiKey = key)
+            settingsStore.save(updated); settings = updated
+            File(filesDir, "debug-fish-paired").writeText("ok")
+            status = "Fish key saved. Speech engine preserved."
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_speechify_key", false)) {
+            val file = File(filesDir, "debug-speechify-key")
+            val key = try { file.readText().trim() } finally { file.delete() }
+            require(key.isNotBlank() && !key.any { it.isWhitespace() }) { "Invalid Speechify key" }
+            val updated = settings.copy(speechifyApiKey = key)
+            settingsStore.save(updated); settings = updated
+            File(filesDir, "debug-speechify-paired").writeText("ok")
+            status = "Speechify key saved. Speech engine preserved."
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_inworld_key", false)) {
+            val file = File(filesDir, "debug-inworld-key")
+            val key = try { file.readText().trim() } finally { file.delete() }
+            require(key.isNotBlank() && !key.any { it.isWhitespace() }) { "Invalid Inworld key" }
+            val updated = settings.copy(inworldApiKey = key)
+            settingsStore.save(updated); settings = updated
+            File(filesDir, "debug-inworld-paired").writeText("ok")
+            status = "Inworld key saved. Speech engine preserved."
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_deepgram_key", false)) {
+            val file = File(filesDir, "debug-deepgram-key")
+            val key = try { file.readText().trim() } finally { file.delete() }
+            require(key.isNotBlank() && !key.any { it.isWhitespace() }) { "Invalid Deepgram key" }
+            val updated = settings.copy(deepgramApiKey = key)
+            settingsStore.save(updated); settings = updated
+            File(filesDir, "debug-deepgram-paired").writeText("ok")
+            status = "Deepgram key saved. Speech engine preserved."
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_cartesia_key", false)) {
+            val file = File(filesDir, "debug-cartesia-key")
+            val key = try { file.readText().trim() } finally { file.delete() }
+            require(key.isNotBlank() && !key.any { it.isWhitespace() }) { "Invalid Cartesia key" }
+            val updated = settings.copy(cartesiaApiKey = key)
+            settingsStore.save(updated); settings = updated
+            File(filesDir, "debug-cartesia-paired").writeText("ok")
+            status = "Cartesia key saved. Speech engine preserved."
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_eleven_key", false)) {
+            val file = File(filesDir, "debug-eleven-key")
+            val key = try { file.readText().trim() } finally { file.delete() }
+            require(key.isNotBlank() && !key.any { it.isWhitespace() }) { "Invalid ElevenLabs key" }
+            val updated = settings.copy(elevenApiKey = key)
+            settingsStore.save(updated); settings = updated
+            File(filesDir, "debug-eleven-paired").writeText("ok")
+            status = "ElevenLabs key saved. Speech engine preserved."
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_groq_key", false)) {
+            val file = File(filesDir, "debug-groq-key")
+            val key = try { file.readText().trim() } finally { file.delete() }
+            require(key.isNotBlank() && !key.any { it.isWhitespace() }) { "Invalid Groq key" }
+            val updated = settings.copy(groqApiKey = key)
+            settingsStore.save(updated); settings = updated
+            File(filesDir, "debug-groq-paired").writeText("ok")
+            status = "Groq key saved. Current speech engine unchanged."
+        }
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("debug_kokoro", false)) {
+            val updated = validateSettings(settings.copy(engine = "kokoro", kokoroVoice = "af_heart", characterMode = "narrator"))
+            playback.stop(); settingsStore.save(updated); settings = updated
+            status = "On-device Kokoro configured; Narrator mode works offline"
         }
         if (BuildConfig.DEBUG && intent.hasExtra("debug_mock")) {
             val url = intent.getStringExtra("debug_mock")!!
