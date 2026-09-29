@@ -130,7 +130,7 @@ class PlaybackEngine(private val app: ReaderApp) {
         if (resume) changeSpeed(saved.speed.coerceIn(.5f, 3f))
         job = app.scope.launch {
             try {
-                coroutineScope {
+                supervisorScope {
                 val chapterSegments = prepareChapter(book, chapter, settings).filter { it.paragraph > startParagraph || (it.paragraph == startParagraph && (!resume || it.end > saved.segment)) }
                 segments = chapterSegments
                 preparedSettings = settings
@@ -142,23 +142,29 @@ class PlaybackEngine(private val app: ReaderApp) {
                 val inFlight = if (settings.engine == "kokoro") 1 else 2
                 val permits = Semaphore(inFlight)
                 val pending = linkedMapOf<Int, Deferred<Pair<File, Boolean>>>()
+                suspend fun generate(i: Int): Pair<File, Boolean> = withContext(Dispatchers.IO) { permits.withPermit {
+                    val speech = direct(chapterSegments[i], settings, chapterSegments.getOrNull(i + 1)?.paragraph != chapterSegments[i].paragraph)
+                    val durable = app.offline.audio(book.id, chapter, "${AudioCache.key(speech, settings)}.wav")
+                    if (durable.isFile) { WavExport.inspect(durable); durable to true }
+                    else { val reused = cache.contains(speech, settings); app.bookAudio(book.id, chapter, chapterSegments[i]) { cache.get(speech, settings, engine) } to reused }
+                } }
                 var scheduled = 0
                 for (index in segments.indices) {
                     while (index > 0 && readyMs >= settings.bufferSeconds.coerceIn(15, 600) * 1000L) delay(100)
                     val ahead = minOf(segments.size, index + inFlight)
                     while (scheduled < ahead) {
                         val i = scheduled++
-                        pending[i] = async(Dispatchers.IO) { permits.withPermit {
-                            val speech = direct(chapterSegments[i], settings, chapterSegments.getOrNull(i + 1)?.paragraph != chapterSegments[i].paragraph)
-                            val durable = app.offline.audio(book.id, chapter, "${AudioCache.key(speech, settings)}.wav")
-                            if (durable.isFile) { WavExport.inspect(durable); durable to true }
-                            else { val reused = cache.contains(speech, settings); app.bookAudio(book.id, chapter, chapterSegments[i]) { cache.get(speech, settings, engine) } to reused }
-                        } }
+                        pending[i] = async { generate(i) }
                     }
-                    val (file, reused) = pending.remove(index)!!.await()
+                    var retryStatus = ""
+                    val (file, reused) = retryPrefetched(pending.remove(index)!!, onRetry = { attempt ->
+                        retryStatus = "Retrying speech for paragraph ${segments[index].paragraph + 1} ($attempt/2)…"
+                        app.status = retryStatus
+                    }) { generate(index) }
+                    if (retryStatus.isNotEmpty() && app.status == retryStatus) app.status = ""
                     val durationMs = withContext(Dispatchers.IO) { WavExport.inspect(file).durationMs }
                     ensureActive()
-                    if (gen != generation) return@coroutineScope
+                    if (gen != generation) return@supervisorScope
                     val wasEnded = player.playbackState == Player.STATE_ENDED
                     val label = speakerLabel(segments[index])
                     val item = MediaItem.Builder().setUri(file.toURI().toString()).setMediaId("$gen:$index")
