@@ -9,6 +9,24 @@ import org.junit.Test
 
 class VoiceCatalogTest {
     private val line = Segment(0, 0, 5, "Hello", "0.0")
+    @Test fun fixedVoiceEnginesPreserveNarratorCharacterVoiceAndPauses() {
+        val voices = mapOf("fish" to FishVoices.names.last(), "speechify" to SpeechifyVoices.names.last(),
+            "inworld" to InworldVoices.names.last(), "deepgram" to DeepgramVoices.names.last(),
+            "cartesia" to CartesiaVoices.names.last(), "elevenlabs" to ElevenVoices.names.last(),
+            "groq" to "hannah", "kokoro" to "bm_george", "android" to "en-installed")
+        for ((engine, voice) in voices) for (mode in listOf("narrator", "distinct", "performance")) {
+            val settings = Settings(engine = engine, characterMode = mode, androidTtsVoice = "en-installed")
+            val character = Character("alice", "Alice", voice = voice)
+            for (person in listOf(null, character)) for (end in listOf(false, true)) {
+                val speech = VoiceDirector.direct(line, settings, person, "curious", end)
+                val expected = if (engine != "android" && mode == "distinct" && person != null) voice else settings.speechVoice
+                assertEquals("$engine/$mode", expected, speech.voice)
+                assertEquals("", speech.prompt)
+                assertEquals(if (end) settings.paragraphPauseMs else settings.withinPauseMs, speech.pauseMs)
+                assertEquals(line.text, speech.text)
+            }
+        }
+    }
     @Test fun completeUniqueCatalog() {
         assertEquals(30, VoiceCatalog.all.size)
         assertEquals(30, VoiceCatalog.names.toSet().size)

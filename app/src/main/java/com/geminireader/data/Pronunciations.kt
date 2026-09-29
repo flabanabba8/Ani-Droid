@@ -24,7 +24,10 @@ class PerformanceRepository(private val root: File) {
         val updated = links().mapValues { (_, link) -> if (link.series == seriesId) link.copy(voices = link.voices.filterValues { it != profileId }) else link }
         atomicWrite(File(root, "series-links.json"), json.encodeToString(updated))
     }
-    fun applicable(book: String): List<Pronunciation> = pronunciations().filter { it.scope == "global" || (it.scope == "book" && it.owner == book) || (it.scope == "series" && it.owner.isNotBlank() && it.owner == link(book).series) }
+    fun applicable(book: String): List<Pronunciation> {
+        val series by lazy { link(book).series }
+        return pronunciations().filter { it.scope == "global" || (it.scope == "book" && it.owner == book) || (it.scope == "series" && it.owner.isNotBlank() && it.owner == series) }
+    }
 }
 
 object PronunciationRules {

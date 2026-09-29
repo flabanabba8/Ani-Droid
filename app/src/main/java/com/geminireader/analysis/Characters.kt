@@ -169,44 +169,19 @@ object VoiceDirector {
         return pool[Math.floorMod(character.id.hashCode(), pool.size)]
     }
     fun direct(segment: Segment, settings: Settings, character: Character?, delivery: String, endParagraph: Boolean): Speech {
-        if (settings.engine in listOf("android")) return Speech(segment.text, "", settings.speechVoice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        if (settings.engine == "fish") {
-            val voice = if (character != null && settings.characterMode == "distinct") FishVoices.distinct(character, settings) else settings.fishVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        }
-        if (settings.engine == "speechify") {
-            val voice = if (character != null && settings.characterMode == "distinct") SpeechifyVoices.distinct(character, settings) else settings.speechifyVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        }
-        if (settings.engine == "inworld") {
-            val voice = if (character != null && settings.characterMode == "distinct") InworldVoices.distinct(character, settings) else settings.inworldVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        }
-        if (settings.engine == "deepgram") {
-            val voice = if (character != null && settings.characterMode == "distinct") DeepgramVoices.distinct(character, settings) else settings.deepgramVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        }
-        if (settings.engine == "cartesia") {
-            val voice = if (character != null && settings.characterMode == "distinct") CartesiaVoices.distinct(character, settings) else settings.cartesiaVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        }
-        if (settings.engine == "elevenlabs") {
-            val voice = if (character != null && settings.characterMode == "distinct") ElevenVoices.distinct(character, settings) else settings.elevenVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        }
-        if (settings.engine == "groq") {
-            val voice = if (character != null && settings.characterMode == "distinct") GroqVoices.distinct(character, settings) else settings.groqVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
-        }
-        if (settings.engine == "kokoro") {
-            val voice = if (character != null && settings.characterMode == "distinct") KokoroVoices.distinct(character, settings) else settings.kokoroVoice
-            return Speech(segment.text, "", voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
+        val pauseMs = if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs
+        when (settings.engine) {
+            "android" -> return Speech(segment.text, "", settings.speechVoice, pauseMs)
+            "fish", "speechify", "inworld", "deepgram", "cartesia", "elevenlabs", "groq", "kokoro" -> {
+                val voice = if (character != null && settings.characterMode == "distinct") distinctVoice(character, settings) else settings.speechVoice
+                return Speech(segment.text, "", voice, pauseMs)
+            }
         }
         val performing = character != null && settings.characterMode != "narrator"
-        val voice = if (performing && settings.characterMode == "distinct") distinctVoice(character!!, settings) else settings.narratorVoice
+        val voice = if (performing && settings.characterMode == "distinct") distinctVoice(character, settings) else settings.narratorVoice
         val profile = VoiceCatalog.find(voice)?.context.orEmpty()
         val direction = "$profile Treat that trait as a baseline, not a mandatory emotion. " + if (!performing) "Narration. ${settings.narratorPrompt}" else buildString {
-            append(settings.narratorPrompt).append(" Perform ${character!!.name} (${character.gender}). ")
+            append(settings.narratorPrompt).append(" Perform ${character.name} (${character.gender}). ")
             if (settings.characterMode == "performance") {
                 append("Keep the narrator's identity. ")
             }
@@ -215,6 +190,6 @@ object VoiceDirector {
         }
         var prompt = direction
         while (prompt.toByteArray().size > 3900) prompt = prompt.dropLast(if (prompt.last().isLowSurrogate()) 2 else 1)
-        return Speech(segment.text, prompt, voice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs)
+        return Speech(segment.text, prompt, voice, pauseMs)
     }
 }

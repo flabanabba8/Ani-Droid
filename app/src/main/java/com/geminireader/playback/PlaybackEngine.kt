@@ -139,7 +139,7 @@ class PlaybackEngine(private val app: ReaderApp) {
                 val engine = TtsEngines.create(settings, api, app.kokoro, app.androidTts)
                 // Local inference is serial. Schedule in reading order so a later sentence
                 // cannot acquire the native mutex ahead of the sentence needed for playback.
-                val inFlight = if (settings.engine in listOf("kokoro")) 1 else 2
+                val inFlight = if (settings.engine == "kokoro") 1 else 2
                 val permits = Semaphore(inFlight)
                 val pending = linkedMapOf<Int, Deferred<Pair<File, Boolean>>>()
                 var scheduled = 0

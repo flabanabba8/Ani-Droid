@@ -122,7 +122,9 @@ import kotlinx.coroutines.CancellationException
     val rejected = remember(book.id, app.chapter, app.rejectionRevision) {
         app.rejectedPassages.list(book.id).filter { it.chapter == app.chapter && !Segmenter.isSceneBreak(chapter.paragraphs.getOrNull(it.segment.paragraph).orEmpty()) }
     }
+    val rejectedByParagraph = remember(rejected) { rejected.groupBy { it.segment.paragraph } }
     val active = playback.active?.takeIf { playback.activeBookId == book.id && playback.activeChapter == app.chapter }
+    val activeSentences = remember(active?.text) { active?.let { Segmenter.sentences(it.text) }.orEmpty() }
     LaunchedEffect(book.id, app.chapter) { list.scrollToItem(app.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)) }
     LaunchedEffect(active?.paragraph, follow) { if (follow && active != null) list.animateScrollToItem(active.paragraph) }
     LaunchedEffect(book.id, app.chapter, list) {
@@ -149,28 +151,31 @@ import kotlinx.coroutines.CancellationException
         }
         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             itemsIndexed(chapter.paragraphs) { index, text ->
+                val paragraphRejections = rejectedByParagraph[index].orEmpty()
                 val annotated = buildAnnotatedString {
                     append(text)
                     if (active?.paragraph == index) {
                         addStyle(SpanStyle(background = Color(0xffe0eaca), color = Color(0xff292817)), active.start, active.end)
                         val offset = (playback.progress * active.text.length).toInt()
-                        val sentence = Segmenter.sentences(active.text).firstOrNull { offset in it }
+                        val sentence = activeSentences.firstOrNull { offset in it }
                         if (sentence != null) addStyle(SpanStyle(background = Color(0xffffd982), color = Color(0xff292817)), active.start + sentence.first, active.start + sentence.last + 1)
                     }
-                    rejected.filter { it.segment.paragraph == index }.forEach { rejection ->
+                    paragraphRejections.forEach { rejection ->
                         val segment = rejection.segment
                         if (segment.start >= 0 && segment.end <= text.length && segment.start < segment.end && text.substring(segment.start, segment.end) == segment.text)
                             addStyle(SpanStyle(background = Color(0xff8b1e2d), color = Color.White), segment.start, segment.end)
                     }
                 }
                 Column {
-                if (rejected.any { it.segment.paragraph == index }) Text("Provider rejected this passage · ${rejected.filter { it.segment.paragraph == index }.map { it.reason }.distinct().joinToString()}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-                if (rejected.any { it.segment.paragraph == index }) TextButton(enabled = !app.busy, onClick = {
-                    editing = index; original = text; draft = text; rewriteMessage = ""
-                }) { Text("Rewrite rejected passage") }
-                if (rejected.any { it.segment.paragraph == index }) TextButton(enabled = !app.busy && !app.preparing, onClick = {
-                    app.paragraph = index; playback.stop(); playback.play(book, app.chapter, index)
-                }) { Text("Retry generation") }
+                if (paragraphRejections.isNotEmpty()) {
+                    Text("Provider rejected this passage · ${paragraphRejections.map { it.reason }.distinct().joinToString()}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                    TextButton(enabled = !app.busy, onClick = {
+                        editing = index; original = text; draft = text; rewriteMessage = ""
+                    }) { Text("Rewrite rejected passage") }
+                    TextButton(enabled = !app.busy && !app.preparing, onClick = {
+                        app.paragraph = index; playback.stop(); playback.play(book, app.chapter, index)
+                    }) { Text("Retry generation") }
+                }
                 Text(annotated, Modifier.fillMaxWidth().combinedClickable(onClick = { if (!Segmenter.isSceneBreak(text)) { app.paragraph = index; playback.play(book, app.chapter, index) } }, onLongClick = {
                     inspecting = active?.takeIf { it.paragraph == index } ?: Segmenter.dialogue(chapter.paragraphs).firstOrNull { it.paragraph == index && it.q != null } ?: Segment(index, 0, text.length, text)
                 }), fontFamily = FontFamily.Serif, fontSize = app.settings.fontSize.sp, lineHeight = (app.settings.fontSize * 1.5f).sp)

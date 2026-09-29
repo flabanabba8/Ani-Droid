@@ -286,13 +286,8 @@ class ReaderApp : Application() {
             else Segmenter.mergeUnknown(Segmenter.dialogue(paragraphs), paragraphs, result.lines.filter { it.speaker in byId }.map { it.q }.toSet())
             when (s.engine) {
                 "kokoro" -> segments.flatMap { Segmenter.sentenceChunks(it) }
-                "android" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
-                "fish" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
-                "speechify" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
-                "inworld" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
-                "deepgram" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
-                "cartesia" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
-                "elevenlabs" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
+                "android", "fish", "speechify", "inworld", "deepgram", "cartesia", "elevenlabs" ->
+                    segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 1000) }
                 "groq" -> segments.flatMap { Segmenter.sentenceChunks(it, maxChars = 200) }
                 else -> segments
             }

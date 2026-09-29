@@ -3,6 +3,7 @@ package com.geminireader.importer
 import com.geminireader.data.Book
 import com.geminireader.data.Chapter
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
 import java.io.ByteArrayInputStream
@@ -25,6 +26,8 @@ fun InputStream.readLimited(limit: Int): ByteArray {
 }
 
 object TextImporters {
+    private val whitespace = Regex("\\s+")
+    private val chapterHeading = Regex("(?i)^(chapter|part|book)\\s+([IVXLCDM]+|\\d+)\\b.*")
     private fun Element.local(name: String) = getAllElements().filter { it.tagName().substringAfter(':').equals(name, true) }
     fun zip(bytes: ByteArray): Map<String, ByteArray> {
         val entries = linkedMapOf<String, ByteArray>()
@@ -48,12 +51,11 @@ object TextImporters {
         bytes.size >= 2 && bytes[0] == 0xfe.toByte() && bytes[1] == 0xff.toByte() -> bytes.toString(Charsets.UTF_16BE).removePrefix("\uFEFF")
         else -> bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF")
     }
-    fun html(text: String): List<String> {
-        val doc = Jsoup.parse(text)
-        return htmlBlocks(doc).map { it.text().trim() }.filter { it.isNotBlank() }
+    fun html(text: String): List<String> = html(Jsoup.parse(text))
+    private fun html(doc: Document): List<String> =
+        htmlBlocks(doc).map { it.text().trim() }.filter { it.isNotBlank() }
             .ifEmpty { listOf(doc.body().text()).filter { it.isNotBlank() } }
-    }
-    private fun htmlBlocks(doc: org.jsoup.nodes.Document): List<Element> {
+    private fun htmlBlocks(doc: Document): List<Element> {
         doc.select("script,style,nav,noscript,svg").remove()
         val blocks = "p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,div"
         return doc.body().select(blocks).filter { it.select(blocks).none { child -> child !== it } }
@@ -61,7 +63,7 @@ object TextImporters {
     }
     fun reflow(text: String): List<String> = text.replace("\r\n", "\n").replace('\r', '\n')
         .replace(Regex("(?<=\\p{L})-\\n(?=\\p{Ll})"), "")
-        .split(Regex("\\n\\s*\\n")).map { it.replace(Regex("\\s+"), " ").trim() }.filter { it.isNotBlank() }
+        .split(Regex("\\n\\s*\\n")).map { it.replace(whitespace, " ").trim() }.filter { it.isNotBlank() }
 
     fun parse(name: String, bytes: ByteArray): Imported {
         val format = name.substringAfterLast('.', "txt").lowercase()
@@ -85,8 +87,8 @@ object TextImporters {
                 Imported(Book(title = bookTitle, author = author, format = format, chapters = chapters))
             }
             "html", "htm", "xhtml" -> {
-                val text = decode(bytes)
-                Imported(Book(title = Jsoup.parse(text).title().ifBlank { title }, format = format, chapters = listOf(Chapter(title, html(text)))))
+                val doc = Jsoup.parse(decode(bytes))
+                Imported(Book(title = doc.title().ifBlank { title }, format = format, chapters = listOf(Chapter(title, html(doc)))))
             }
             "txt", "md", "markdown" -> {
                 var text = decode(bytes)
@@ -96,7 +98,7 @@ object TextImporters {
                 var heading = title
                 var current = mutableListOf<String>()
                 for (p in paragraphs) {
-                    if (p.length < 100 && Regex("(?i)^(chapter|part|book)\\s+([IVXLCDM]+|\\d+)\\b.*").matches(p)) {
+                    if (p.length < 100 && chapterHeading.matches(p)) {
                         if (current.isNotEmpty()) chapters += Chapter(heading, current)
                         heading = p; current = mutableListOf()
                     }

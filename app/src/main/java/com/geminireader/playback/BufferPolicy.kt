@@ -3,7 +3,7 @@ package com.geminireader.playback
 object BufferPolicy {
     fun remainingMs(durations: List<Long>, index: Int, positionMs: Long, speed: Float): Long {
         if (index !in durations.indices) return 0
-        return ((durations.drop(index).sum() - positionMs).coerceAtLeast(0) / speed.coerceAtLeast(.1f)).toLong()
+        return ((durations.subList(index, durations.size).sum() - positionMs).coerceAtLeast(0) / speed.coerceAtLeast(.1f)).toLong()
     }
     fun label(ms: Long): String {
         val seconds = ms.coerceAtLeast(0) / 1000

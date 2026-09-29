@@ -16,6 +16,14 @@ class ImporterTest {
         assertEquals(listOf("First", "One"), book.chapters.first().paragraphs)
     }
     @Test fun htmlDoesNotDuplicateNestedBlocks() { assertEquals(listOf("Hello world", "Next"), TextImporters.html("<div><p>Hello <b>world</b></p><p>Next</p></div><script>bad()</script>")) }
+    @Test fun htmlImportKeepsTitleAndHandlesTextWithoutBlocks() {
+        for (format in listOf("html", "htm", "xhtml")) {
+            val book = TextImporters.parse("fallback.$format", "<title>Book title</title><body>Hello <b>reader</b><script>ignored()</script></body>".toByteArray()).book
+            assertEquals("Book title", book.title)
+            assertEquals(listOf("Hello reader"), book.chapters.single().paragraphs)
+            assertEquals("fallback", book.chapters.single().title)
+        }
+    }
     @Test fun epubSplitsNavAnchorsWithinOneSpineDocument() {
         val bytes = archive(mapOf("META-INF/container.xml" to "<container><rootfile full-path='OPS/book.opf'/></container>", "OPS/book.opf" to "<package><manifest><item id='a' href='a.xhtml'/><item id='nav' href='nav.xhtml' properties='nav'/></manifest><spine><itemref idref='a'/></spine></package>", "OPS/nav.xhtml" to "<nav epub:type='toc'><a href='a.xhtml#one'>First chapter</a><a href='a.xhtml#two'>Second chapter</a></nav>", "OPS/a.xhtml" to "<h1 id='one'>One</h1><p>A</p><h1 id='two'>Two</h1><p>B</p>"))
         val chapters = TextImporters.parse("x.epub", bytes).book.chapters
