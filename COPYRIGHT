@@ -1,0 +1,15 @@
+PageCast
+Copyright (C) 2026 flabanabba8 and PageCast contributors
+
+PageCast is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+
+PageCast is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. See LICENSE for the GNU General Public License.
+
+Third-party components retain their own copyrights and licenses. In particular,
+app/src/main/java/com/k2fsa/sherpa/onnx/Tts.kt is copyright Xiaomi Corporation,
+licensed under Apache-2.0. See docs/kokoro-licenses and docs/kokoro-source.md.
+PageCast's original listing text, screenshots, and icon are also GPL-3.0-or-later.

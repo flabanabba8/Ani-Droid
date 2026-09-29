@@ -1,0 +1,13 @@
+PageCast is a free software ebook reader with optional spoken narration.
+
+Import EPUB, text-based PDF, TXT, HTML, Markdown, FB2 and DOCX files. Read with adjustable text size and theme, browse chapters, and keep your place between sessions. DRM-protected books and scanned PDFs are not supported.
+
+Listen using an installed Android speech engine, optional downloaded Kokoro voices, or a cloud speech provider you configure. Character performance, distinct voices, pronunciation rules, series voice profiles, passage editing and offline chapter preparation help you tailor narration. Export generated audio as WAV.
+
+Reading needs no account. Kokoro narrator mode works offline after installation. Its optional download includes native code outside F-Droid's checks; an explicit confirmation is required before downloading. Android speech engines may require their own voice downloads.
+
+Optional proprietary cloud services include Google Vertex AI/Gemini, Groq, ElevenLabs, Cartesia, Deepgram, Inworld, Speechify and Fish Audio. They receive text needed for the requested speech, character analysis or rewriting, and may charge fees. Bring your own account credentials. Provider availability, content rules and retention policies apply. No cloud account or private token broker is included.
+
+PageCast has no advertising or analytics SDK. Books, positions and settings are stored on your device. Android backup is disabled; uninstalling removes app-private data. Keep your original books. Privacy details: https://github.com/flabanabba8/PageCast/blob/main/PRIVACY.md
+
+Licensed under GPL-3.0-or-later. Third-party components retain their own licenses.

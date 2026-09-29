@@ -1,0 +1,54 @@
+AntiFeatures:
+  NonFreeNet:
+    en-US: Optional cloud speech, character analysis and rewriting use proprietary
+      services including Google Vertex AI/Gemini, Groq, ElevenLabs, Cartesia, Deepgram,
+      Inworld, Speechify and Fish Audio. Reading and local narration do not require
+      these services.
+Categories:
+  - Reading
+License: GPL-3.0-or-later
+AuthorName: flabanabba8
+SourceCode: https://github.com/flabanabba8/PageCast
+IssueTracker: https://github.com/flabanabba8/PageCast/issues
+Changelog: https://github.com/flabanabba8/PageCast/releases
+
+AutoName: PageCast
+
+RepoType: git
+Repo: https://github.com/flabanabba8/PageCast.git
+
+Builds:
+  - versionName: 0.2.0
+    versionCode: 2
+    commit: v0.2.0
+    subdir: app
+    gradle:
+      - yes
+    scanignore:
+      - app/src/main/assets/kokoro-recipe.bin
+
+MaintainerNotes: |-
+  PageCast retains the historical com.geminireader application ID. The release
+  variant is PageCast; do not build the separate .canary variant.
+
+  Sherpa-ONNX's Kotlin JNI wrapper is vendored as Apache-2.0 source. No Sherpa
+  AAR/JAR/native runtime or trained weights are included in the APK. See
+  docs/kokoro-source.md for the pinned source, modification and model provenance.
+  kokoro-recipe.bin is a compressed ONNX model transformation resource generated
+  by tools/kokoro-recipe.py, not executable JVM/DEX/native code. Please review
+  the model data treatment. The one scanignore entry is exclusively for this
+  non-executable model resource (gzip/KQR1), flagged by its .bin extension.
+  Its generator and decoder are published; no executable libraries are ignored.
+
+  Optional native runtime/model downloads are off by default and require explicit
+  consent explaining that they bypass F-Droid checks. Reading works without them.
+  Cloud accounts and a user-configured token broker are optional. No API secrets
+  or personal broker configuration are distributed.
+
+  Proposed distribution uses F-Droid-managed signing. Existing debug-signed
+  development installations cannot update directly to that signature.
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.2.0
+CurrentVersionCode: 2

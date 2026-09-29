@@ -1,39 +1,12 @@
-import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.process.ExecOperations
-import javax.inject.Inject
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
-abstract class PrepareKokoroTask : DefaultTask() {
-    @get:InputFile abstract val script: RegularFileProperty
-    @get:InputFile abstract val recipe: RegularFileProperty
-    @get:InputFile abstract val packager: RegularFileProperty
-    @get:InputFile abstract val quantizer: RegularFileProperty
-    @get:InputDirectory abstract val licenses: DirectoryProperty
-    @get:OutputDirectory abstract val assetsDirectory: DirectoryProperty
-        @get:OutputFile abstract val runtimeAar: RegularFileProperty
-    @get:Inject abstract val execOperations: ExecOperations
-    @TaskAction fun prepare() {
-        execOperations.exec { commandLine("python3", script.get().asFile.absolutePath) }
-    }
-}
-val prepareKokoro = tasks.register<PrepareKokoroTask>("prepareKokoro") {
-    script.set(rootProject.file("tools/prepare-kokoro-android.py"))
-    recipe.set(rootProject.file("tools/kokoro-recipe.py"))
-    packager.set(rootProject.file("tools/package-kokoro-downloads.py"))
-    quantizer.set(rootProject.file("tools/quantize-kokoro.py"))
-    licenses.set(rootProject.file("docs/kokoro-licenses"))
-    assetsDirectory.set(layout.buildDirectory.dir("generated/kokoro/bootstrap-assets"))
-    runtimeAar.set(layout.buildDirectory.file("generated/kokoro/sherpa-onnx.aar"))
-}
 android {
     namespace = "com.geminireader"
     compileSdk { version = release(37) { minorApiLevel = 2 } }
-    defaultConfig { applicationId = "com.geminireader"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "0.1.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "com.geminireader"; minSdk = 26; targetSdk = 36; versionCode = 2; versionName = "0.2.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildTypes {
         create("canary") {
             initWith(getByName("debug"))
@@ -60,14 +33,10 @@ androidComponents {
         it.hostTests.getValue("UnitTest").enable = true
         it.deviceTests.getValue("AndroidTest").enable = true
     }
-    onVariants { variant ->
-        variant.sources.assets?.addGeneratedSourceDirectory(prepareKokoro, PrepareKokoroTask::assetsDirectory)
-    }
 }
 
 dependencies {
     implementation("org.apache.commons:commons-compress:1.27.1")
-    implementation(files(prepareKokoro.flatMap { it.runtimeAar }))
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.13.0")

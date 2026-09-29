@@ -1,6 +1,6 @@
 # PageCast privacy and data use
 
-Updated September 15, 2026. This describes the current implementation; revisit it before the public release.
+Updated September 29, 2026 for PageCast 0.2.0.
 
 ## On your device
 

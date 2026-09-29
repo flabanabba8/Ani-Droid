@@ -1,0 +1,4 @@
+First PageCast release prepared for F-Droid review.
+Build the Kokoro wrapper from published Kotlin source; normal builds no longer download native binaries or models.
+Add GPL-3.0-or-later licensing, dependency provenance and cloud-service disclosures.
+Includes automatic playback retries, dismissible rejection notices, punctuation fixes and Gemini 3.1 Flash-Lite analysis.

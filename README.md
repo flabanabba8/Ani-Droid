@@ -1,5 +1,8 @@
 # PageCast
 
+Free software under **GPL-3.0-or-later**. See [LICENSE](LICENSE), [COPYRIGHT](COPYRIGHT),
+and the [0.2.0 release notes](CHANGELOG.md). Public source: https://github.com/flabanabba8/PageCast.
+
 Previously Gemini Reader. The Android package remains `com.geminireader` so upgrades retain books, settings, and audio. Existing workspace paths and token-broker service names remain unchanged for compatibility.
 
 Android reader built with Compose and Media3. Package: `com.geminireader`. Android 8+ (API 26); target API 36, compile API 37.2. The handoff's pinned Compose, core, lifecycle and OkHttp versions require compile SDK 37 or later according to their AAR metadata. The emulator remains API 36.
@@ -10,13 +13,19 @@ Read and listen with optionally downloaded on-device Kokoro (28 English voices) 
 
 See [current implementation](wiki/current-work.md), [passage recovery](wiki/passages.md), [spending](wiki/spending.md), [privacy](PRIVACY.md), and [verification](VERIFICATION.md).
 
-**F-Droid is the intended release channel.** Submission preparation is pending: the app license/public repository, native dependency source-build path, model provenance, release signing and metadata still need work. See the [F-Droid release plan](wiki/fdroid.md). This repository's dependency notices do not yet establish a license for the app itself.
+**F-Droid is the intended release channel.** Release 0.2.0 includes source-built
+Kokoro bindings, listing assets and proposed build metadata. Inclusion and the
+optional model/runtime download design remain subject to F-Droid review. See the
+[F-Droid release plan](wiki/fdroid.md) and [Kokoro provenance](docs/kokoro-source.md).
 
 ## Local development
 
 Project knowledge base: [LLM wiki](wiki/README.md), [complete feature backlog](wiki/features.md), [current milestone](wiki/current-work.md).
 
-The Kokoro build also requires Python 3.11+ and `uv` for the first selective-model conversion. It downloads checksum-pinned runtime/model archives, then quantizes with pinned ONNX tooling and verifies that the result matches the benchmarked model. These downloads are a development workflow; the F-Droid build route remains pending.
+Normal APK builds compile the vendored Kotlin Kokoro bindings directly and use
+the checked-in model download catalog and conversion recipe. They do not download
+a Sherpa AAR or model weights. Python 3.11+ and `uv` are only needed by maintainers
+regenerating those model resources; see [provenance](docs/kokoro-source.md).
 
 No system packages or sudo are needed. The setup script installs Temurin JDK 21 and the official Android SDK in your home directory. System Java 25 is not used.
 
