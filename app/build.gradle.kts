@@ -34,6 +34,18 @@ android {
     namespace = "com.geminireader"
     compileSdk { version = release(37) { minorApiLevel = 2 } }
     defaultConfig { applicationId = "com.geminireader"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "0.1.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    buildTypes {
+        create("canary") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".canary"
+            versionNameSuffix = "-canary"
+            matchingFallbacks += "debug"
+        }
+    }
+    sourceSets.getByName("canary") {
+        manifest.srcFile("src/debug/AndroidManifest.xml")
+        res.directories.add("src/debug/res")
+    }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     packaging {
@@ -73,7 +85,7 @@ dependencies {
 // Always write fresh APK archives. Incremental ZIP updates can retain large holes
 // after bundled models are removed, even when their entries are no longer listed.
 tasks.configureEach {
-    if (name.matches(Regex("package(Debug|Release)(AndroidTest)?"))) {
+    if (name.matches(Regex("package(Debug|Release|Canary)(AndroidTest)?"))) {
         outputs.upToDateWhen { false }
         outputs.cacheIf { false }
         doFirst {

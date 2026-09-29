@@ -46,6 +46,12 @@ python3 tools/monitor-memory.py --serial YOUR_PHONE_SERIAL
 
 Samples every two seconds and prints decimal MB plus the highest sampled PSS in the monitoring session. Use `--once` for a snapshot or Ctrl+C to stop. PSS apportions shared pages and is useful for app-attributed memory; RSS includes every resident shared page. Watch before model load, during generation, and after switching back to Vertex. This samples process memory, not a guaranteed instantaneous peak. Requires wireless/USB ADB, not root. [Android memory diagnostics](https://developer.android.com/tools/dumpsys#meminfo).
 
+## PageCast Canary
+
+Build with `./gradlew assembleCanary`. Install `app/build/outputs/apk/canary/app-canary.apk` with ADB. This debug-signed variant appears as **PageCast Canary**, uses package `com.geminireader.canary`, and installs alongside PageCast with independent storage. Launch it with `adb shell am start -n com.geminireader.canary/com.geminireader.MainActivity`.
+
+To retain settings on an initial Canary install, stop Canary and copy `files/datastore/settings.preferences_pb` from PageCast using each package's `run-as` access before launching Canary. Keep the destination file private (mode 600), compare the copied bytes, and never print or commit its contents. This includes Gemini credentials and Vertex automatic-renewal settings; books and playback state are separate. Subsequent `adb install -r` updates preserve Canary's own settings.
+
 ### Fresh APK packaging
 
-Every debug/release APK packaging task (including Android test APKs) deletes its previous output and incremental packaging state before writing a new archive. APK packaging is never up-to-date or restored from the build cache. Compilation and other tasks remain incremental. This is intentional: incremental APK ZIP edits retained large unused regions after model removal. Do not remove this behavior; the user requested fresh packaging on every rebuild.
+Every debug/release/canary APK packaging task (including Android test APKs) deletes its previous output and incremental packaging state before writing a new archive. APK packaging is never up-to-date or restored from the build cache. Compilation and other tasks remain incremental. This is intentional: incremental APK ZIP edits retained large unused regions after model removal. Do not remove this behavior; the user requested fresh packaging on every rebuild.
