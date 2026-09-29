@@ -300,7 +300,7 @@ class ReaderApp : Application() {
         try { action() } catch (e: CancellationException) { throw e } catch (e: Exception) { status = e.message ?: "Operation failed" } finally { busy = false }
     }
     fun open(id: String) = task {
-        val loaded = withContext(Dispatchers.IO) { books.load(id) to books.position(id) }
+        val loaded = withContext(Dispatchers.IO) { books.load(id) to books.readingPosition(id) }
         book = loaded.first; chapter = loaded.second.chapter.coerceIn(0, loaded.first.chapters.lastIndex)
         paragraph = loaded.second.paragraph.coerceIn(0, loaded.first.chapters[chapter].paragraphs.lastIndex)
         screen = "reader"; status = ""
@@ -357,7 +357,7 @@ class ReaderApp : Application() {
         if (book == null && intent.action == Intent.ACTION_MAIN && !intent.hasExtra("debug_import") && !intent.hasExtra("debug_book")) {
             val last = runCatching { File(filesDir, "last-book.txt").readText().trim() }.getOrNull()
             if (last != null) runCatching {
-                val loaded = books.load(last); val saved = books.position(last)
+                val loaded = books.load(last); val saved = books.readingPosition(last)
                 book = loaded; chapter = saved.chapter.coerceIn(0, loaded.chapters.lastIndex)
                 paragraph = saved.paragraph.coerceIn(0, loaded.chapters[chapter].paragraphs.lastIndex); screen = "reader"
                 loadCharacters()

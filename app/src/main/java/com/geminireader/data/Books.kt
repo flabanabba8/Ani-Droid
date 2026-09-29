@@ -62,6 +62,11 @@ class BookRepository(val root: File) {
     }
     fun position(id: String): Position = runCatching { json.decodeFromString<Position>(File(directory(id), "position.json").readText()) }.getOrDefault(Position())
     fun position(id: String, value: Position) = atomicWrite(File(directory(id), "position.json"), json.encodeToString(value))
+    fun readingPosition(id: String): Position {
+        val reading = File(directory(id), "reading-position.json")
+        if (reading.lastModified() < File(directory(id), "position.json").lastModified()) return position(id)
+        return runCatching { json.decodeFromString<Position>(reading.readText()) }.getOrElse { position(id) }
+    }
     fun readingPosition(id: String, value: Position) = atomicWrite(File(directory(id), "reading-position.json"), json.encodeToString(value))
     fun delete(id: String) { check(directory(id).deleteRecursively()) { "Could not delete book" } }
 }

@@ -28,8 +28,14 @@ class MilestoneTest {
             val repo = BookRepository(dir)
             val saved = Position(1, 12, 44, 9123, "audio.wav", 1.5f)
             repo.position("book", saved)
+            assertEquals(saved, repo.readingPosition("book"))
             repo.readingPosition("book", Position(1, 30))
             assertEquals(saved, BookRepository(dir).position("book"))
+            assertEquals(Position(1, 30), BookRepository(dir).readingPosition("book"))
+            dir.resolve("book/reading-position.json").setLastModified(1000)
+            assertEquals(saved, repo.readingPosition("book"))
+            dir.resolve("book/reading-position.json").writeText("corrupt")
+            assertEquals(saved, repo.readingPosition("book"))
             assertEquals("", json.decodeFromString<Position>("""{"chapter":0,"paragraph":1}""").audioKey)
         } finally { dir.deleteRecursively() }
     }

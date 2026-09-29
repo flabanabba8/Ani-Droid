@@ -56,6 +56,10 @@ android {
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 androidComponents {
+    beforeVariants(selector().withBuildType("canary")) {
+        it.hostTests.getValue("UnitTest").enable = true
+        it.deviceTests.getValue("AndroidTest").enable = true
+    }
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(prepareKokoro, PrepareKokoroTask::assetsDirectory)
     }

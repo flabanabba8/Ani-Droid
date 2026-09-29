@@ -50,6 +50,21 @@ Samples every two seconds and prints decimal MB plus the highest sampled PSS in 
 
 Build with `./gradlew assembleCanary`. Install `app/build/outputs/apk/canary/app-canary.apk` with ADB. This debug-signed variant appears as **PageCast Canary**, uses package `com.geminireader.canary`, and installs alongside PageCast with independent storage. Launch it with `adb shell am start -n com.geminireader.canary/com.geminireader.MainActivity`.
 
+Canary has its own JVM and instrumentation tasks: `testCanaryUnitTest` and `assembleCanaryAndroidTest`. For emulator debugging:
+
+```bash
+source tools/env.sh
+ANDROID_SERIAL=emulator-5554 tools/emulator.sh --headless
+./gradlew testCanaryUnitTest assembleCanary assembleCanaryAndroidTest lintCanary
+adb -s emulator-5554 install -r app/build/outputs/apk/canary/app-canary.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/canary/app-canary-androidTest.apk
+adb -s emulator-5554 shell am instrument -w -r \
+  -e class com.geminireader.data.LibraryOnDeviceTest,com.geminireader.tts.HttpApiOnDeviceTest,com.geminireader.tts.CartesiaOnDeviceTest \
+  com.geminireader.canary.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The emulator helper defaults to `emulator-5554` and rejects phone serials. Native Kokoro tests require its downloaded model/runtime; Android TTS tests require an installed offline English voice. Paid provider tests are opt-in. Inspect instrumentation status codes: the runner's `OK` total can include skipped tests. See [Canary review](../docs/canary-debug-review.md) for the September 29 results and limits.
+
 To retain settings on an initial Canary install, stop Canary and copy `files/datastore/settings.preferences_pb` from PageCast using each package's `run-as` access before launching Canary. Keep the destination file private (mode 600), compare the copied bytes, and never print or commit its contents. This includes Gemini credentials and Vertex automatic-renewal settings; books and playback state are separate. Subsequent `adb install -r` updates preserve Canary's own settings.
 
 ### Fresh APK packaging
