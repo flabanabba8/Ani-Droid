@@ -1,6 +1,6 @@
 # PageCast F-Droid submission
 
-Proposed release: **0.2.0**, version code **2**, tag `v0.2.0`.
+Proposed release: **0.2.1**, version code **3**, tag `v0.2.1`.
 Public source: https://github.com/flabanabba8/PageCast
 License: **GPL-3.0-or-later**; see `LICENSE` and `COPYRIGHT`.
 

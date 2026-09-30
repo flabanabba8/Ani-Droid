@@ -1,0 +1,1 @@
+Add guided Google Drive book imports through Android’s document picker. Imported books stay available offline. Remove personal deployment identifiers from documentation and helper defaults.

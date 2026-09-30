@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "com.geminireader"
     compileSdk { version = release(37) { minorApiLevel = 2 } }
-    defaultConfig { applicationId = "com.geminireader"; minSdk = 26; targetSdk = 36; versionCode = 2; versionName = "0.2.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "com.geminireader"; minSdk = 26; targetSdk = 36; versionCode = 3; versionName = "0.2.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildTypes {
         create("canary") {
             initWith(getByName("debug"))

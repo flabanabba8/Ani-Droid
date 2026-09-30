@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source tools/env.sh
-remote=${1:-USER@BROKER_HOST}
+remote=${1:?Usage: tools/pair-token-broker.sh USER@BROKER_HOST}
 [[ "$remote" != -* && "$remote" =~ ^[a-zA-Z0-9_.@:-]+$ ]] || exit 1
 # No token, certificate key or pairing secret in command-line arguments or stdout.
 ssh -o BatchMode=yes "$remote" 'python3 .local/share/gemini-reader-broker/broker.py --pairing-json' |

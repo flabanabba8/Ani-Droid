@@ -6,9 +6,9 @@ status: prepared; GitLab submission pending
 ---
 # PageCast F-Droid release
 
-PageCast 0.2.0 (version code 2) is prepared under GPL-3.0-or-later at
+PageCast 0.2.1 (version code 3) is prepared under GPL-3.0-or-later at
 https://github.com/flabanabba8/PageCast. Its Android ID remains `com.geminireader`
-for continuity. The source tag is `v0.2.0`.
+for continuity. The source tag is `v0.2.1`.
 
 The submission recipe, recorded checks, signing strategy and remaining review
 work are maintained in [fdroid/README.md](../fdroid/README.md). The listing is in

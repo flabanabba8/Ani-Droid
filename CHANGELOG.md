@@ -1,5 +1,11 @@
 # PageCast releases
 
+## 0.2.1
+
+- Add guided Google Drive importing through Android’s document picker.
+- Remove personal deployment identifiers from documentation and helper defaults.
+- Ignore local credentials and signing files.
+
 ## 0.2.0
 
 - Prepare the first public release for F-Droid review under GPL-3.0-or-later.

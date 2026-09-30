@@ -79,7 +79,7 @@ def main():
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
-    parser.add_argument("--project", default="YOUR_PROJECT_ID")
+    parser.add_argument("--project", default="", help="Google Cloud project ID (required with --init)")
     parser.add_argument("--pairing-json", action="store_true", help="Sensitive: pipe directly to app-private storage, never logs")
     args = parser.parse_args()
     os.umask(0o077)
@@ -87,6 +87,8 @@ def main():
     folder.mkdir(parents=True, exist_ok=True)
     config_path = folder / "pairing.json"
     if args.init:
+        if not args.project:
+            parser.error("--project is required with --init")
         if config_path.exists():
             print("Existing broker configuration retained")
             return
