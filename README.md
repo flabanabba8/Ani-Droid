@@ -18,6 +18,16 @@ Kokoro bindings, listing assets and proposed build metadata. Inclusion and the
 optional model/runtime download design remain subject to F-Droid review. See the
 [F-Droid release plan](wiki/fdroid.md) and [Kokoro provenance](docs/kokoro-source.md).
 
+## Import from Google Drive
+
+Choose **Import book → From Google Drive → Browse Drive files**. In Android's
+file picker, open the navigation menu, choose Drive and your account, then select
+the book. Install/open the Google Drive app and sign in if Drive is not listed.
+PageCast imports a local copy for offline reading; it does not edit the Drive
+file or sync reading progress. Cloud files may need an internet connection.
+This uses Android's document provider support without a Google SDK or Google
+account credentials in PageCast.
+
 ## Local development
 
 Project knowledge base: [LLM wiki](wiki/README.md), [complete feature backlog](wiki/features.md), [current milestone](wiki/current-work.md).

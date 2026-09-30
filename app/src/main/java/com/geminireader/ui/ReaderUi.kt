@@ -44,16 +44,31 @@ import kotlinx.coroutines.CancellationException
 
 @Composable fun ReaderUi(app: ReaderApp) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) app.handle(Intent(Intent.ACTION_VIEW, uri)) }
+    var importMenu by remember { mutableStateOf(false) }
+    var driveHelp by rememberSaveable { mutableStateOf(false) }
     BackHandler(app.screen != "library") { app.screen = if (app.screen in listOf("characters", "pronunciation", "series")) "reader" else "library" }
     val dark = app.settings.theme == "dark" || (app.settings.theme == "system" && androidx.compose.foundation.isSystemInDarkTheme())
     val view = LocalView.current
     SideEffect { (view.context as? Activity)?.window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = !dark } }
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Color(0xffa2d5bf)) else lightColorScheme(primary = Color(0xff245b4c), background = Color(0xfffaf8f1), surface = Color(0xfffaf8f1))) {
+        if (driveHelp) AlertDialog(
+            onDismissRequest = { driveHelp = false },
+            title = { Text("Import from Google Drive") },
+            text = { Text("In the file picker, open the navigation menu and choose Google Drive, then select your account and book.\n\nIf Drive is missing, install or open the Google Drive app and sign in, then try again. An internet connection may be needed to download the book.\n\nPageCast keeps a local copy for reading offline. Your Drive file stays unchanged; reading progress is not synced to Drive.") },
+            confirmButton = { TextButton(onClick = { driveHelp = false; picker.launch(arrayOf("*/*")) }) { Text("Browse Drive files") } },
+            dismissButton = { TextButton(onClick = { driveHelp = false }) { Text("Cancel") } }
+        )
         Scaffold(modifier = Modifier.fillMaxSize(), topBar = {
             Column(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { app.screen = "library" }) { Text(androidx.compose.ui.res.stringResource(com.geminireader.R.string.app_name)) }
-                    if (app.screen == "library") TextButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Import book") }
+                    if (app.screen == "library") Box {
+                        TextButton(enabled = !app.busy, onClick = { importMenu = true }) { Text("Import book") }
+                        DropdownMenu(expanded = importMenu, onDismissRequest = { importMenu = false }) {
+                            DropdownMenuItem(text = { Text("Browse files") }, onClick = { importMenu = false; picker.launch(arrayOf("*/*")) })
+                            DropdownMenuItem(text = { Text("From Google Drive") }, onClick = { importMenu = false; driveHelp = true })
+                        }
+                    }
                     TextButton(onClick = { app.screen = "settings" }) { Text("Settings") }
                 }
                 if (app.busy) LinearProgressIndicator(Modifier.fillMaxWidth())

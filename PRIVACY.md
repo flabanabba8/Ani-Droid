@@ -1,6 +1,6 @@
 # PageCast privacy and data use
 
-Updated September 29, 2026 for PageCast 0.2.0.
+Updated September 30, 2026.
 
 ## On your device
 
@@ -9,6 +9,12 @@ PageCast stores imported book copies, reading/listening positions, character ana
 Credentials are stored in private app settings. This is Android app isolation, not a claim of separate encrypted credential storage. The manifest disables Android backup and its extraction rules exclude cloud backup and device transfer. The current app has no advertising, analytics or crash-reporting SDK configured.
 
 ## When text leaves the device
+
+Google Drive imports use Android's document picker and the installed Drive app.
+Drive handles Google sign-in and downloading the selected file; PageCast does
+not receive your Google password or Drive account token. PageCast reads the
+selected document into its local library. It does not upload books or reading
+progress to Drive. The Drive app's network activity follows Google's policies.
 
 Selecting Fish Audio sends speech text and voice IDs to Fish; the free tier may use requests for model improvement. Selecting Speechify sends speech text and voice IDs to Speechify. Selecting Inworld sends speech text and the selected voice ID to Inworld. Selecting Deepgram sends speech text and the selected English voice model to Deepgram; its account and model-improvement terms apply. Selecting Cartesia sends speech text and the selected voice ID to Cartesia. Selecting ElevenLabs sends speech text and the selected voice ID to ElevenLabs. Selecting Groq sends speech text and the selected voice to Groq. Selecting a Google speech engine sends the requested text (including spoken pronunciation replacements) and voice instructions to the configured provider. Character analysis sends chapter excerpts and relevant character context to the selected Google or Groq text model. Requested passage rewrites send text to that model even when speech uses Kokoro or Groq. Generation may continue ahead of playback to fill the buffer; chapter preparation generates the selected chapter. Provider processing and retention follow that provider's terms.
 
