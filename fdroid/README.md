@@ -42,8 +42,10 @@ metadata lint, source scan with the documented data exception, and APK scan.
 The source-built wrapper also passed two local speech instrumentation tests on
 a dedicated emulator. Screenshots contain only original sample books.
 
-These are local checks. The full F-Droid build-server recipe and upstream CI
-have not run, and the model resource exception has not been approved.
+On September 30, the full local `fdroid build --test --scan-binary` recipe also
+passed for 0.2.1/code 3. Upstream CI has not run: GitLab blocked the fork pipeline
+because the submitting account is not verified. The model resource exception
+still requires reviewer approval.
 
 ## Signing and publication
 
@@ -53,5 +55,7 @@ F-Droid-signed APK. Preserve their books and settings before any migration;
 do not uninstall an existing installation just to try this release.
 
 The GitHub tag is a source release for review, not an F-Droid approval or a
-signed installable APK. At preparation time the GitLab submission is pending
-account sign-in; no merge request has been filed.
+signed installable APK. Submission: [draft merge request !50694](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/50694)
+and [packaging request #4484](https://gitlab.com/fdroid/rfp/-/work_items/4484).
+Account verification is required before GitLab will run the fork CI. F-Droid
+inclusion and publication remain pending.
