@@ -125,12 +125,12 @@ import kotlinx.coroutines.withContext
                 item { Text(if (draft.engine in listOf("kokoro", "groq", "elevenlabs", "cartesia", "deepgram", "inworld", "speechify", "fish", "android")) "Vertex AI · text analysis and rewrites" else "Vertex AI · speech and analysis use this project", style = MaterialTheme.typography.titleMedium) }
                 item { Field("Google Cloud project ID", draft.vertexProject) { draft = draft.copy(vertexProject = it.trim()) } }
                 item { Field("Vertex region", draft.vertexLocation) { draft = draft.copy(vertexLocation = it.trim()) } }
-                item { Text(if (draft.vertexBrokerUrl.isBlank()) "Authentication: manual token" else "Authentication: automatic renewal via BROKER_HOST", style = MaterialTheme.typography.titleSmall) }
+                item { Text(if (draft.vertexBrokerUrl.isBlank()) "Authentication: manual token" else "Authentication: automatic renewal via your broker", style = MaterialTheme.typography.titleSmall) }
                 item { Field("Token broker HTTPS URL (blank = manual)", draft.vertexBrokerUrl) { draft = draft.copy(vertexBrokerUrl = it.trim()) } }
                 item { Field("Broker certificate SHA-256 fingerprint", draft.vertexBrokerPin) { draft = draft.copy(vertexBrokerPin = it.trim()) } }
                 item { Field("Broker pairing secret", draft.vertexBrokerSecret, true) { draft = draft.copy(vertexBrokerSecret = it.trim()) } }
                 item { Field("Manual Vertex access token (unused with broker)", draft.vertexToken, true) { draft = draft.copy(vertexToken = it.trim()) } }
-                item { Text("Automatic renewal requires the BROKER_HOST on local Wi-Fi. Google refresh credentials remain there. Broker setup is documented in the project wiki; no public internet port is required.", style = MaterialTheme.typography.bodySmall) }
+                item { Text("Automatic renewal requires your broker computer on local Wi-Fi. Google refresh credentials remain there. Broker setup is documented in the project wiki; no public internet port is required.", style = MaterialTheme.typography.bodySmall) }
             } else if (draft.textEngine != "groq") {
             if (draft.engine !in listOf("kokoro", "groq", "elevenlabs", "cartesia", "deepgram", "inworld", "speechify", "fish", "android")) item { Field("Cloud API key", draft.apiKey, true) { draft = draft.copy(apiKey = it.trim()) } }
             item { Field("Gemini / analysis key (blank = Cloud key)", draft.geminiKey, true) { draft = draft.copy(geminiKey = it.trim()) } }

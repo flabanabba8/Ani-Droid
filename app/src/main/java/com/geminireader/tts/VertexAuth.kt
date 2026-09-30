@@ -66,7 +66,7 @@ object VertexAuth {
                 val request = Request.Builder().url(s.vertexBrokerUrl).header("Authorization", "Bearer ${s.vertexBrokerSecret}")
                     .header("X-Reader-Refresh", if (rejected == null) "0" else "1").post(byteArrayOf().toRequestBody()).build()
                 client.newCall(request).execute().use { response ->
-                    require(response.isSuccessful) { "Token renewal failed (HTTP ${response.code}); check the BROKER_HOST broker and pairing" }
+                    require(response.isSuccessful) { "Token renewal failed (HTTP ${response.code}); check your token broker and pairing" }
                     val result = json.parseToJsonElement(response.body.string()).jsonObject
                     require(result["project"]?.jsonPrimitive?.content == s.vertexProject) { "Broker project does not match Vertex project" }
                     val expires = result["expires_in"]!!.jsonPrimitive.long.coerceIn(1, 3600)

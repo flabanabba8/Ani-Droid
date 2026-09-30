@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Usage: tools/pair-groq.sh ADB_SERIAL SSH_HOST [REMOTE_ENV_PATH]
+# Usage: tools/pair-groq.sh ADB_SERIAL SSH_HOST REMOTE_ENV_PATH
 # Key travels through a pipe directly into private app storage, never argv/logs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source tools/env.sh
 serial="${1:?ADB serial required}"
 remote="${2:?SSH host required}"
-env_path="${3:-/home/USER/.openfang/secrets.env}"
+env_path="${3:?Remote environment file path required}"
 # Restrict the path before embedding it in the remote shell command.
 [[ "$env_path" =~ ^/[a-zA-Z0-9_./-]+$ ]] || { echo "Unsupported path" >&2; exit 1; }
 adb -s "$serial" shell run-as com.geminireader rm -f files/debug-groq-paired
