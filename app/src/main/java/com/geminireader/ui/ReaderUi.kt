@@ -250,7 +250,7 @@ import kotlinx.coroutines.CancellationException
         if (playback.sleepMode != "off") TextButton(onClick = { sleepDialog = true }) {
             Text(if (playback.sleepMode == "duration") "Sleep in ${(playback.sleepRemainingMs + 59_999) / 60_000} min" else "Sleep at end of ${playback.sleepMode}")
         }
-        if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
+        if (active != null) Text("${playback.speaker} · requested voice: ${playback.requestedVoice} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         if (rejected.isNotEmpty() && chapter.paragraphs.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         TextButton(onClick = {
             follow = false

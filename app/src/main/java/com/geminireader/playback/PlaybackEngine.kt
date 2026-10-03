@@ -63,6 +63,7 @@ class PlaybackEngine(private val app: ReaderApp) {
     var progress by mutableFloatStateOf(0f)
     var speed by mutableFloatStateOf(1f)
     var speaker by mutableStateOf("Narrator")
+    var requestedVoice by mutableStateOf("")
     var prompt by mutableStateOf("")
     var speechFor: (Segment, Settings, Boolean) -> Speech = { segment, settings, endParagraph -> Speech(segment.text, settings.narratorPrompt, settings.speechVoice, if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs) }
     var prepareChapter: suspend (Book, Int, Settings) -> List<Segment> = { book, chapter, _ -> Segmenter.narration(book.chapters[chapter].paragraphs) }
@@ -82,7 +83,8 @@ class PlaybackEngine(private val app: ReaderApp) {
                 active = segments.getOrNull(index)
                 active?.let { segment ->
                     val s = speechFor(segment, app.settings, segments.getOrNull(index + 1)?.paragraph != segment.paragraph)
-                    prompt = s.prompt
+                    prompt = mediaItem.mediaMetadata.description?.toString() ?: s.prompt
+                    requestedVoice = mediaItem.mediaMetadata.subtitle?.toString() ?: s.voice
                     speaker = mediaItem.mediaMetadata.artist?.toString() ?: "Narrator"
                     if (app.book?.id == activeBookId && app.chapter == activeChapter) app.paragraph = segment.paragraph
                 }
@@ -231,8 +233,9 @@ class PlaybackEngine(private val app: ReaderApp) {
                     if (gen != generation) return@supervisorScope
                     val wasEnded = player.playbackState == Player.STATE_ENDED
                     val label = speakerLabel(segments[index])
+                    val requested = direct(segments[index], settings, segments.getOrNull(index + 1)?.paragraph != segments[index].paragraph)
                     val item = MediaItem.Builder().setUri(file.toURI().toString()).setMediaId("$gen:$index")
-                        .setMediaMetadata(MediaMetadata.Builder().setTitle(book.title).setArtist(label).setAlbumTitle(book.chapters[chapter].title).build()).build()
+                        .setMediaMetadata(MediaMetadata.Builder().setTitle(book.title).setArtist(label).setSubtitle(requested.voice).setDescription(requested.prompt).setAlbumTitle(book.chapters[chapter].title).build()).build()
                     player.addMediaItem(item)
                     durations += durationMs
                     if (player.mediaItemCount == 1) {

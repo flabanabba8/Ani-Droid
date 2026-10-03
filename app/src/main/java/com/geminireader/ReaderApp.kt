@@ -127,6 +127,7 @@ class ReaderApp : Application() {
     lateinit var analyzer: CharacterAnalyzer
     var cast by mutableStateOf(emptyList<Character>())
     var analysis by mutableStateOf(Analysis())
+    var modelsEngine by mutableStateOf("")
     var models by mutableStateOf(emptyList<String>())
     fun rememberBook(id: String) { atomicWrite(File(filesDir, "last-book.txt"), id) }
     private var pendingExport: File? = null
@@ -271,7 +272,7 @@ class ReaderApp : Application() {
             names += (response["publisherModels"] ?: response["models"])?.jsonArray.orEmpty().mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.content?.substringAfterLast('/') }
             next = response["nextPageToken"]?.jsonPrimitive?.content.orEmpty()
         } while (next.isNotBlank() && names.size < 1000)
-        models = names.distinct().sorted(); status = "Fetched ${models.size} models"
+        models = names.distinct().sorted(); modelsEngine = if (valid.textEngine == "vertex") "vertex" else "gemini"; status = "Fetched ${models.size} models"
     }
     override fun onCreate() {
         super.onCreate(); books = BookRepository(File(filesDir, "books")); performances = PerformanceRepository(filesDir); offline = OfflineChapters(books, performances); settingsStore = SettingsStore(this); playback = PlaybackEngine(this)

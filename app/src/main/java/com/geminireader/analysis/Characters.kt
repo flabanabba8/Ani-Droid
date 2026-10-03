@@ -168,21 +168,25 @@ object VoiceDirector {
         val pool = if (character.gender.equals("female", true)) female else if (character.gender.equals("male", true)) male else listOf(settings.narratorVoice)
         return pool[Math.floorMod(character.id.hashCode(), pool.size)]
     }
+    fun usesCharacterVoice(settings: Settings, character: Character?): Boolean =
+        character != null && settings.characterMode != "narrator" &&
+            (settings.characterMode == "distinct" || (character.performanceLocked && character.voice.isNotBlank()))
+
     fun direct(segment: Segment, settings: Settings, character: Character?, delivery: String, endParagraph: Boolean): Speech {
         val pauseMs = if (endParagraph) settings.paragraphPauseMs else settings.withinPauseMs
         when (settings.engine) {
             "android" -> return Speech(segment.text, "", settings.speechVoice, pauseMs)
             "fish", "speechify", "inworld", "deepgram", "cartesia", "elevenlabs", "groq", "kokoro" -> {
-                val voice = if (character != null && settings.characterMode == "distinct") distinctVoice(character, settings) else settings.speechVoice
+                val voice = if (usesCharacterVoice(settings, character)) distinctVoice(requireNotNull(character), settings) else settings.speechVoice
                 return Speech(segment.text, "", voice, pauseMs)
             }
         }
         val performing = character != null && settings.characterMode != "narrator"
-        val voice = if (performing && settings.characterMode == "distinct") distinctVoice(character, settings) else settings.narratorVoice
+        val voice = if (usesCharacterVoice(settings, character)) distinctVoice(requireNotNull(character), settings) else settings.narratorVoice
         val profile = VoiceCatalog.find(voice)?.context.orEmpty()
         val direction = "$profile Treat that trait as a baseline, not a mandatory emotion. " + if (!performing) "Narration. ${settings.narratorPrompt}" else buildString {
             append(settings.narratorPrompt).append(" Perform ${character.name} (${character.gender}). ")
-            if (settings.characterMode == "performance") {
+            if (settings.characterMode == "performance" && !usesCharacterVoice(settings, character)) {
                 append("Keep the narrator's identity. ")
             }
             append(VoiceCatalog.performance(voice, character.gender)).append(' ')

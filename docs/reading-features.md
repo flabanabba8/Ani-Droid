@@ -4,7 +4,7 @@ Implementation order follows the requested feature list. These changes are in
 the working development version; the F-Droid submission still targets 0.2.1.
 
 1. **Characters:** lock a voice and delivery, adjust expression and edit the shared
-   audition line. Save pins an automatic voice choice. Series voice profiles carry
+   audition line. Save pins an automatic voice choice. A locked character voice overrides Performance mode; Narrator mode remains a single voice. Series voice profiles carry
    stable delivery and expression across manually linked books. Direction controls
    apply to engines that accept prompts; they cannot guarantee identical acting
    from a generative provider. Voice selection still works for other engines.
@@ -47,3 +47,7 @@ the working development version; the F-Droid submission still targets 0.2.1.
 Debug and release APK builds passed as the initial validation. Device behavior, background
 scheduling and external audiobook-player interoperability require runtime checks;
 no automated tests were added or run for this feature batch.
+
+Canary follow-up: the Google TTS model selector is a dropdown with provider-specific
+model IDs and compatible fetched catalog choices. Playback shows the requested
+voice ID so it can be distinguished from the perceived vocal performance.
