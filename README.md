@@ -23,8 +23,8 @@ optional model/runtime download design remain subject to F-Droid review. See the
 The current development build adds ten reading and listening features, including
 voice locks, a sleep timer, background preparation, credential-free library
 backup, spoiler-safe references, audiobook export and notes. See
-[feature locations and limits](docs/reading-features.md). These additions have
-built successfully but have not yet undergone runtime testing.
+[feature locations and limits](docs/reading-features.md). These additions passed unit tests, emulator checks and release lint; see the
+feature guide for the tested scope and remaining real-world coverage.
 
 ## Import from Google Drive
 

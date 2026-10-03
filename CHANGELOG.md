@@ -30,3 +30,9 @@ The Android ID remains `com.geminireader`. Canary is a separate development app.
 8. AAC M4A/M4B export of prepared chapters/books, including chapter markers and cover metadata.
 9. Optional import cleanup with a before/after preview.
 10. Sentence bookmarks, saved quotes, editable notes and selected quote export.
+
+### Pre-merge fixes
+
+- Invalidate prepared audio when a reassigned speaker’s voice changes.
+- Report the correct exported paragraph range after skipped speech.
+- Verify Distinct defaults, voice locks, backup privacy and the new playback/library tools.

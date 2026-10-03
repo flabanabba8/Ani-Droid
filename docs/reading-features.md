@@ -44,9 +44,11 @@ the working development version; the F-Droid submission still targets 0.2.1.
     Add/edit notes, return to the source, and export selected quotes with chapter
     references. Saved quotes survive later source edits and show a change warning.
 
-Debug and release APK builds passed as the initial validation. Device behavior, background
-scheduling and external audiobook-player interoperability require runtime checks;
-no automated tests were added or run for this feature batch.
+Debug/release builds and release lint pass. 141 JVM tests and six emulator
+instrumentation tests pass, covering voice modes/locks, source boundaries,
+cleanup, notes, backup/restore, AAC metadata, sleep boundaries, skipped playback
+and queued preparation. Long overnight/reboot scheduling and other audiobook
+players still need real-world coverage.
 
 Canary follow-up: the Google TTS model selector is a dropdown with provider-specific
 model IDs and compatible fetched catalog choices. Playback shows the requested

@@ -261,7 +261,8 @@ class PlaybackEngine(private val app: ReaderApp) {
         val files = (0 until player.mediaItemCount).map { File(requireNotNull(player.getMediaItemAt(it).localConfiguration?.uri?.path)) }
         require(files.all { it.isFile }) { "Some audio is no longer cached; play that passage again" }
         val last = segments.getOrNull(player.getMediaItemAt(files.lastIndex).mediaId.substringAfter(':').toIntOrNull() ?: -1) ?: error("No book audio")
-        return ExportSelection(files, "${files.size} generated segments; paragraphs ${segments.first().paragraph + 1}–${last.paragraph + 1}. Only generated audio is included, possibly ending partway through the last paragraph. WAV uses original 1× speed.")
+        val first = segments.getOrNull(player.getMediaItemAt(0).mediaId.substringAfter(':').toIntOrNull() ?: -1) ?: error("No book audio")
+        return ExportSelection(files, "${files.size} generated segments; paragraphs ${first.paragraph + 1}–${last.paragraph + 1}. Only generated audio is included, possibly ending partway through the last paragraph. WAV uses original 1× speed.")
     }
     private fun nextChapter() {
         if (sleepMode in listOf("chapter", "paragraph")) { sleepNow(); return }

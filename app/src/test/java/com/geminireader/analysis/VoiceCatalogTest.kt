@@ -38,7 +38,7 @@ class VoiceCatalogTest {
     }
     @Test fun everyVoiceUsesActualProfileInsteadOfStaleSettingsGender() {
         for (voice in VoiceCatalog.all) for (gender in listOf("female", "male", "unknown")) {
-            val s = Settings(narratorVoice = voice.name, narratorGender = "incorrect")
+            val s = Settings(characterMode = "performance", narratorVoice = voice.name, narratorGender = "incorrect")
             val result = VoiceDirector.direct(line, s, Character("c", "Character", gender = gender), "calm", true)
             assertEquals(voice.name, result.voice)
             assertTrue(result.prompt.contains(voice.context))
@@ -65,7 +65,7 @@ class VoiceCatalogTest {
     }
     @Test fun performanceDoesNotSwitchToRecommendedVoiceAndNarrationDoesNotAct() {
         val c = Character("alice", "Alice", gender = "female", suggestedVoice = "Leda")
-        assertEquals("Charon", VoiceDirector.direct(line, Settings(), c, "", true).voice)
+        assertEquals("Charon", VoiceDirector.direct(line, Settings(characterMode = "performance"), c, "", true).voice)
         val result = VoiceDirector.direct(line, Settings(characterMode = "narrator"), c, "", true)
         assertFalse(result.prompt.contains("Perform Alice"))
         assertFalse(result.prompt.contains("lighter, higher"))
@@ -80,7 +80,7 @@ class VoiceCatalogTest {
     @Test fun narratorAndModeInvalidateAnalysisButLegacyGenderDoesNot() {
         val s = Settings()
         assertNotEquals(VoiceCatalog.cacheIdentity(s), VoiceCatalog.cacheIdentity(s.copy(narratorVoice = "Kore")))
-        assertNotEquals(VoiceCatalog.cacheIdentity(s), VoiceCatalog.cacheIdentity(s.copy(characterMode = "distinct")))
+        assertNotEquals(VoiceCatalog.cacheIdentity(s), VoiceCatalog.cacheIdentity(s.copy(characterMode = "performance")))
         assertEquals(VoiceCatalog.cacheIdentity(s), VoiceCatalog.cacheIdentity(s.copy(narratorGender = "female")))
     }
     @Test fun oldCharacterRecordsRemainReadable() {

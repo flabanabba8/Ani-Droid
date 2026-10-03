@@ -39,7 +39,7 @@ class SegmenterTest {
     @Test fun unmatchedQuoteWithoutAnyClosedQuotes() { assertEquals("0.0", Segmenter.dialogue(listOf("Then “not closed")).last().q) }
     @Test fun unknownDialogueMergesWithNarration() { val text = listOf("She said “Hello.” Then left."); val merged = Segmenter.mergeUnknown(Segmenter.dialogue(text), text, emptySet()); assertEquals(1, merged.size); assertEquals(text[0], merged[0].text) }
     @Test fun performanceKeepsNarratorAndDirectsGenderShift() {
-        val speech = VoiceDirector.direct(Segment(0,0,5,"Hello","0.0"), Settings(), Character("alice","Alice",gender="female"),"curious",true)
+        val speech = VoiceDirector.direct(Segment(0,0,5,"Hello","0.0"), Settings(characterMode="performance"), Character("alice","Alice",gender="female"),"curious",true)
         assertEquals("Charon", speech.voice); assertTrue(speech.prompt.contains("lighter, higher")); assertTrue(speech.prompt.contains("Alice"))
         val distinct = VoiceDirector.direct(Segment(0,0,5,"Hello","0.0"), Settings(characterMode="distinct"), Character("alice","Alice",gender="female"),"",true)
         assertTrue(distinct.voice in VoiceDirector.female)
