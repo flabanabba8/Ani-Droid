@@ -51,3 +51,7 @@ no automated tests were added or run for this feature batch.
 Canary follow-up: the Google TTS model selector is a dropdown with provider-specific
 model IDs and compatible fetched catalog choices. Playback shows the requested
 voice ID so it can be distinguished from the perceived vocal performance.
+
+Distinct is the default character mode for new settings: narration uses the
+selected narrator and attributed dialogue uses character voices. Existing saved
+mode choices are preserved unless explicitly changed.

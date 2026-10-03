@@ -395,6 +395,14 @@ class ReaderApp : Application() {
                 loadCharacters()
             }
         }
+        if (BuildConfig.DEBUG && intent.hasExtra("debug_character_mode")) {
+            val mode = intent.getStringExtra("debug_character_mode")!!
+            require(mode in if (settings.engine == "android") listOf("narrator") else listOf("distinct", "performance", "narrator")) { "Unsupported character mode" }
+            cancelPreparationAndJoin(); playback.stopAndJoin()
+            val updated = settings.copy(characterMode = mode)
+            settingsStore.save(updated); settings = updated
+            status = "Character mode updated to $mode"
+        }
         if (BuildConfig.DEBUG && intent.hasExtra("debug_analysis_model")) {
             val updated = validateSettings(settings.copy(analysisModel = intent.getStringExtra("debug_analysis_model")!!))
             playback.stop(); settingsStore.save(updated); settings = updated

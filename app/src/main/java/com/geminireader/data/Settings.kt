@@ -30,7 +30,7 @@ import kotlinx.serialization.Serializable
     val analysisModel: String = "gemini-3.1-flash-lite", val language: String = "en-US",
     val narratorVoice: String = "Charon", val narratorGender: String = "male",
     val narratorPrompt: String = "Read with warmth, clarity and natural pacing.",
-    val characterMode: String = "performance", val prefetch: Int = 3,
+    val characterMode: String = "distinct", val prefetch: Int = 3,
     val bufferSeconds: Int = 120,
     val skipFailedSpeech: Boolean = false,
     val withinPauseMs: Int = 80, val paragraphPauseMs: Int = 350,
