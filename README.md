@@ -18,6 +18,14 @@ Kokoro bindings, listing assets and proposed build metadata. Inclusion and the
 optional model/runtime download design remain subject to F-Droid review. See the
 [F-Droid release plan](wiki/fdroid.md) and [Kokoro provenance](docs/kokoro-source.md).
 
+## Development additions
+
+The current development build adds ten reading and listening features, including
+voice locks, a sleep timer, background preparation, credential-free library
+backup, spoiler-safe references, audiobook export and notes. See
+[feature locations and limits](docs/reading-features.md). These additions have
+built successfully but have not yet undergone runtime testing.
+
 ## Import from Google Drive
 
 Choose **Import book → From Google Drive → Browse Drive files**. In Android's

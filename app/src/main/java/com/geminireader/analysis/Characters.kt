@@ -12,7 +12,7 @@ import kotlinx.serialization.json.*
 import java.io.File
 import java.security.MessageDigest
 
-@Serializable data class Character(val id: String, val name: String, val aliases: List<String> = emptyList(), val gender: String = "unknown", val age: String = "", val description: String = "", val voiceStyle: String = "", val voice: String = "", val edited: Boolean = false, val suggestedVoice: String = "")
+@Serializable data class Character(val id: String, val name: String, val aliases: List<String> = emptyList(), val gender: String = "unknown", val age: String = "", val description: String = "", val voiceStyle: String = "", val voice: String = "", val edited: Boolean = false, val suggestedVoice: String = "", val performanceLocked: Boolean = false, val intensity: Float = .5f, val delivery: String = "natural")
 @Serializable data class Attribution(val q: String, val speaker: String = "unknown", val delivery: String = "")
 @Serializable data class Analysis(val characters: List<Character> = emptyList(), val lines: List<Attribution> = emptyList(), val fingerprint: String = "")
 
@@ -186,7 +186,8 @@ object VoiceDirector {
                 append("Keep the narrator's identity. ")
             }
             append(VoiceCatalog.performance(voice, character.gender)).append(' ')
-            append(character.voiceStyle).append(" Delivery: ").append(delivery.ifBlank { "natural" }).append(". Speak only the supplied line; do not read these directions.")
+            append("Keep this character’s vocal identity stable across lines. Expression level: ").append((character.intensity.coerceIn(0f, 1f) * 100).toInt()).append("/100 (0 restrained, 100 dramatic). ")
+            append(character.voiceStyle).append(" Delivery: ").append(if (character.performanceLocked) character.delivery.ifBlank { "natural" } else delivery.ifBlank { "natural" }).append(". Speak only the supplied line; do not read these directions.")
         }
         var prompt = direction
         while (prompt.toByteArray().size > 3900) prompt = prompt.dropLast(if (prompt.last().isLowSurrogate()) 2 else 1)

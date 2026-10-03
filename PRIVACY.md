@@ -35,3 +35,23 @@ Development mocks can log book text and voice prompts. Do not publish those logs
 Android TTS delegates narration to the installed engine chosen in Settings. Offline-only mode excludes voices reported as requiring network access; network voices can send text to that engine provider. Voice downloads and provider behavior are controlled by the installed engine. Narrator mode sends no character-analysis requests. Optional passage rewrites still use the configured text provider.
 
 Kokoro is now an optional post-install download: its model and native runtime are excluded from the APK. Settings provides Download, Cancel and Delete controls. Only the matching CPU architecture is fetched from public sherpa-onnx GitHub releases; the exact selective-8 model is prepared locally using a small bundled recipe. No custom hosting or speech API key is required. Downloads occur only after explicit consent; installed Narrator speech works offline. See the Kokoro wiki for details.
+
+## Library tools and background preparation
+
+Explicit library backups include imported book text, reading positions, saved
+quotes/notes, character casts, series voice profiles and pronunciation rules.
+They exclude application settings, credentials, broker configuration, generated
+audio and models. Backups are not encrypted: the destination you choose through
+Android's document picker (including a cloud provider) receives the archive.
+Restoration adds new book copies and keeps existing books and credentials.
+Selected quote export similarly writes only the quotes and notes you select.
+
+The spoiler-safe reference searches only source paragraphs before the selected
+reading position on this device. It does not use cloud models or future cast
+analysis. Import cleanup and AAC audiobook encoding also run on this device.
+
+Scheduled preparation can send selected book text to your configured speech and
+analysis providers while PageCast is in the background. You explicitly choose
+the chapter range and charging/network constraints before scheduling. Saved
+queue metadata contains book/chapter IDs and a configuration hash, not API keys.
+You can pause the queue from Book tools. A settings change requires requeueing.

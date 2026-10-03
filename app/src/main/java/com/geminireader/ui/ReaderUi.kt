@@ -11,6 +11,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -51,6 +56,7 @@ import kotlinx.coroutines.CancellationException
     val view = LocalView.current
     SideEffect { (view.context as? Activity)?.window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = !dark } }
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Color(0xffa2d5bf)) else lightColorScheme(primary = Color(0xff245b4c), background = Color(0xfffaf8f1), surface = Color(0xfffaf8f1))) {
+        ImportReview(app)
         if (driveHelp) AlertDialog(
             onDismissRequest = { driveHelp = false },
             title = { Text("Import from Google Drive") },
@@ -115,8 +121,16 @@ import kotlinx.coroutines.CancellationException
 
 @Composable private fun ReaderScreen(app: ReaderApp) {
     val book = app.book ?: return
-    val chapter = book.chapters[app.chapter]
+    val chapterIndex = app.chapter
+    val chapter = book.chapters[chapterIndex]
     var toc by remember { mutableStateOf(false) }
+    var notesDialog by remember { mutableStateOf(false) }
+    var referenceQuery by remember { mutableStateOf("") }
+    var referenceDialog by remember { mutableStateOf(false) }
+    var repairDialog by remember { mutableStateOf(false) }
+    var sleepDialog by remember { mutableStateOf(false) }
+    var sleepMinutes by remember { mutableStateOf("30") }
+    var sleepFade by remember { mutableStateOf(true) }
     var bookTools by remember { mutableStateOf(false) }
     var inspecting by remember(book.id, app.chapter) { mutableStateOf<Segment?>(null) }
     var editing by rememberSaveable(book.id, app.chapter) { mutableStateOf<Int?>(null) }
@@ -126,9 +140,17 @@ import kotlinx.coroutines.CancellationException
     var rewriting by remember { mutableStateOf(false) }
     var rewriteJob by remember { mutableStateOf<Job?>(null) }
     var rewriteMessage by rememberSaveable(book.id, app.chapter) { mutableStateOf("") }
+    var exportWholeBook by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf<PlaybackEngine.ExportSelection?>(null) }
+    var queueDialog by remember { mutableStateOf(false) }
+    var queueAll by remember { mutableStateOf(false) }
+    var queueCount by remember { mutableStateOf("3") }
+    var chargingOnly by remember { mutableStateOf(true) }
+    var wifiOnly by remember { mutableStateOf(true) }
+    var millionRate by remember { mutableStateOf("") }
     var preparing by remember { mutableStateOf(false) }
     var removingPrepared by remember { mutableStateOf(false) }
+    val audiobookPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mp4")) { app.finishExport(it) }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { app.finishExport(it) }
     val list = rememberLazyListState()
     val readerScope = rememberCoroutineScope()
@@ -155,9 +177,23 @@ import kotlinx.coroutines.CancellationException
                 Box {
                     TextButton(onClick = { bookTools = true }) { Text("Book tools") }
                     DropdownMenu(expanded = bookTools, onDismissRequest = { bookTools = false }) {
+                        DropdownMenuItem(text = { Text("Playback recovery / repair list") }, onClick = { bookTools = false; repairDialog = true })
+                        DropdownMenuItem(text = { Text("Bookmarks and quotes") }, onClick = { bookTools = false; notesDialog = true })
+                        DropdownMenuItem(text = { Text("Bookmark current sentence") }, onClick = {
+                            bookTools = false
+                            val p = active?.paragraph ?: app.paragraph.coerceIn(0, chapter.paragraphs.lastIndex)
+                            val text = active?.text ?: chapter.paragraphs[p]
+                            val range = Segmenter.sentences(text).firstOrNull { (playback.progress * text.length).toInt() in it } ?: (0 until text.length)
+                            val start = (active?.start ?: 0) + range.first
+                            val end = ((active?.start ?: 0) + range.last + 1).coerceAtMost(chapter.paragraphs[p].length)
+                            app.task { app.notes.save(book.id, com.geminireader.data.ReadingNote(chapter = chapterIndex, paragraph = p, start = start, end = end, quote = chapter.paragraphs[p].substring(start, end))); app.status = "Sentence bookmarked (estimated audio timing)" }
+                        })
+                        DropdownMenuItem(text = { Text("Sleep timer") }, onClick = { bookTools = false; sleepDialog = true })
+                        DropdownMenuItem(text = { Text("Spoiler-safe character reference") }, onClick = { bookTools = false; referenceQuery = ""; referenceDialog = true })
                         DropdownMenuItem(text = { Text("Characters") }, onClick = { bookTools = false; app.screen = "characters" })
                         DropdownMenuItem(text = { Text("Pronunciation") }, onClick = { bookTools = false; app.screen = "pronunciation" })
                         DropdownMenuItem(text = { Text("Series voices") }, onClick = { bookTools = false; app.screen = "series" })
+                        DropdownMenuItem(text = { Text("Prepare chapters overnight") }, onClick = { bookTools = false; queueDialog = true })
                         DropdownMenuItem(text = { Text("Export audio") }, enabled = !app.busy && !app.preparing, onClick = { bookTools = false; runCatching { app.exportChapter() }.onSuccess { exporting = it }.onFailure { app.status = it.message.orEmpty() } })
                         DropdownMenuItem(text = { Text(if (app.preparing) "Cancel preparation" else "Prepare chapter offline") }, onClick = { bookTools = false; if (app.preparing) app.cancelPreparation() else preparing = true })
                     }
@@ -191,11 +227,28 @@ import kotlinx.coroutines.CancellationException
                         app.paragraph = index; playback.stop(); playback.play(book, app.chapter, index)
                     }) { Text("Retry generation") }
                 }
-                Text(annotated, Modifier.fillMaxWidth().combinedClickable(onClick = { if (!Segmenter.isSceneBreak(text)) { app.paragraph = index; playback.play(book, app.chapter, index) } }, onLongClick = {
+                var textLayout by remember(text) { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+                val playParagraph = { if (!Segmenter.isSceneBreak(text)) { app.paragraph = index; playback.play(book, app.chapter, index) } }
+                val inspectParagraph = {
                     inspecting = active?.takeIf { it.paragraph == index } ?: Segmenter.dialogue(chapter.paragraphs).firstOrNull { it.paragraph == index && it.q != null } ?: Segment(index, 0, text.length, text)
-                }), fontFamily = FontFamily.Serif, fontSize = app.settings.fontSize.sp, lineHeight = (app.settings.fontSize * 1.5f).sp)
+                }
+                Text(annotated, Modifier.fillMaxWidth().pointerInput(text, active, chapterIndex) {
+                    detectTapGestures(onTap = { playParagraph() }, onLongPress = { inspectParagraph() }, onDoubleTap = { point ->
+                        textLayout?.let { layout ->
+                            val boundary = layout.getWordBoundary(layout.getOffsetForPosition(point))
+                            referenceQuery = text.substring(boundary.start.coerceIn(0, text.length), boundary.end.coerceIn(0, text.length)).trim()
+                            if (referenceQuery.isNotBlank()) referenceDialog = true
+                        }
+                    })
+                }.semantics {
+                    onClick("Play from paragraph") { playParagraph(); true }
+                    onLongClick("Inspect passage") { inspectParagraph(); true }
+                }, onTextLayout = { textLayout = it }, fontFamily = FontFamily.Serif, fontSize = app.settings.fontSize.sp, lineHeight = (app.settings.fontSize * 1.5f).sp)
                 }
             }
+        }
+        if (playback.sleepMode != "off") TextButton(onClick = { sleepDialog = true }) {
+            Text(if (playback.sleepMode == "duration") "Sleep in ${(playback.sleepRemainingMs + 59_999) / 60_000} min" else "Sleep at end of ${playback.sleepMode}")
         }
         if (active != null) Text("${playback.speaker} · estimated sentence timing", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
         if (rejected.isNotEmpty() && chapter.paragraphs.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -209,6 +262,12 @@ import kotlinx.coroutines.CancellationException
         }
         if (playback.speechFailed && playback.activeBookId == book.id) TextButton(onClick = { playback.retrySpeech() }) { Text("Retry failed speech") }
         if (playback.activeBookId == book.id) Text(BufferPolicy.label(playback.readyMs), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            TextButton(onClick = { playback.seekBy(-15_000) }) { Text("−15s") }
+            TextButton(onClick = { playback.seekSentence(false) }) { Text("Previous sentence") }
+            TextButton(onClick = { playback.seekSentence(true) }) { Text("Next sentence") }
+            TextButton(onClick = { playback.seekBy(15_000) }) { Text("+15s") }
+        }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             Button(onClick = { playback.toggle() }) { Text(if (playback.activeBookId == book.id && playback.activeChapter == app.chapter && playback.player.playWhenReady && (playback.speaking || playback.loading || playback.player.mediaItemCount > 0)) "Pause" else "Play") }
             TextButton(onClick = { playback.changeSpeed(if (playback.speed >= 2f) .75f else playback.speed + .25f) }) { Text("${playback.speed}×") }
@@ -219,9 +278,62 @@ import kotlinx.coroutines.CancellationException
             TextButton(onClick = { app.selectChapter(app.chapter + 1) }, enabled = app.chapter < book.chapters.lastIndex) { Text("Next chapter") }
         }
     }
-    exporting?.let { selection -> AlertDialog(onDismissRequest = { exporting = null }, title = { Text("Export generated audio") }, text = { Text(selection.description + "\nExport itself requests no new speech. Normal playback buffering may continue.") }, confirmButton = {
-        TextButton(onClick = { exporting = null; app.stageExport(selection) { exportPicker.launch("reader-chapter-${app.chapter + 1}.wav") } }) { Text("Save WAV") }
-    }, dismissButton = { TextButton(onClick = { exporting = null }) { Text("Cancel") } }) }
+    if (notesDialog) NotesDialog(app, book, jump = { note ->
+        val ch = note.chapter.coerceIn(0, book.chapters.lastIndex)
+        val p = note.paragraph.coerceIn(0, book.chapters[ch].paragraphs.lastIndex)
+        app.selectChapter(ch); app.paragraph = p; app.saveReadingPosition(); follow = false
+        readerScope.launch { list.scrollToItem(p) }
+    }) { notesDialog = false }
+    if (referenceDialog) ReadReferenceDialog(book, app.chapter, active?.paragraph ?: app.paragraph, referenceQuery) { referenceDialog = false }
+    if (queueDialog) AlertDialog(onDismissRequest = { queueDialog = false }, title = { Text("Prepare chapters") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Row { Switch(queueAll, { queueAll = it }); Text("Whole book", Modifier.padding(8.dp)) }
+            if (!queueAll) OutlinedTextField(queueCount, { queueCount = it.filter(Char::isDigit).take(4) }, label = { Text("Chapters starting here") })
+            Row { Switch(chargingOnly, { chargingOnly = it }); Text("Only while charging", Modifier.padding(8.dp)) }
+            Row { Switch(wifiOnly, { wifiOnly = it }); Text("Wi-Fi only (unmetered on Android 8)", Modifier.padding(8.dp)) }
+            val chapters = if (queueAll) book.chapters.indices.toList() else (app.chapter..minOf(book.chapters.lastIndex, app.chapter + (queueCount.toIntOrNull() ?: 1).coerceAtLeast(1) - 1)).toList()
+            val chars = chapters.sumOf { ch -> book.chapters[ch].paragraphs.sumOf { it.length.toLong() } }
+            Text("${chapters.size} chapters · $chars source characters")
+            OutlinedTextField(millionRate, { millionRate = it.take(16) }, label = { Text("Your USD rate per million characters (optional)") })
+            val rate = millionRate.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }
+            Text(if (app.settings.engine in listOf("kokoro", "android") && app.settings.characterMode == "narrator") "Local speech: no PageCast API charge." else if (rate != null) "Speech estimate: $${"%.2f".format(chars * rate / 1_000_000)}; excludes analysis, retries and provider differences." else "Cost unknown. Cloud speech and analysis can incur charges.")
+            Text("Android schedules background work. Completed audio survives interruptions. Changing settings requires requeueing. Existing prepared audio is reused.")
+            com.geminireader.playback.PreparationQueue.read(app)?.let { Text("Saved queue: ${it.chapters.size} chapters remaining") }
+            Button(enabled = !app.preparing && !app.busy, onClick = { app.task { playback.stop(); com.geminireader.playback.PreparationQueue.schedule(app, com.geminireader.playback.PreparationRequest(book.id, chapters, com.geminireader.playback.PreparationQueue.fingerprint(app.settings), chargingOnly, wifiOnly)); queueDialog = false } }) { Text("Queue selected chapters") }
+            TextButton(onClick = { app.cancelPreparation(); queueDialog = false }) { Text("Pause queue") }
+        }
+    }, confirmButton = { TextButton(onClick = { queueDialog = false }) { Text("Close") } })
+    if (repairDialog) AlertDialog(onDismissRequest = { repairDialog = false }, title = { Text("Playback recovery") }, text = {
+        LazyColumn {
+            item { Row { Switch(app.settings.skipFailedSpeech, { enabled -> app.task { app.settingsStore.save(app.settings.copy(skipFailedSpeech = enabled)) } }); Text("Skip failed speech after retries", Modifier.padding(8.dp)) } }
+            item { Text("Skipped text is saved below. No provider is changed and no text is rewritten.") }
+            val skipped = app.skippedPassages.list(book.id)
+            if (skipped.isEmpty()) item { Text("No skipped passages.") }
+            items(skipped) { entry ->
+                Text("Chapter ${entry.chapter + 1}, paragraph ${entry.segment.paragraph + 1}: ${entry.segment.text.take(160)}")
+                TextButton(onClick = { repairDialog = false; app.selectChapter(entry.chapter); app.paragraph = entry.segment.paragraph; playback.play(book, entry.chapter, entry.segment.paragraph) }) { Text("Go to passage and retry") }
+            }
+        }
+    }, confirmButton = { TextButton(onClick = { repairDialog = false }) { Text("Close") } })
+    if (sleepDialog) AlertDialog(onDismissRequest = { sleepDialog = false }, title = { Text("Sleep timer") }, text = {
+        Column {
+            Text("Current: ${playback.sleepMode}")
+            OutlinedTextField(sleepMinutes, { sleepMinutes = it.filter(Char::isDigit).take(3) }, label = { Text("Minutes (1–240)") })
+            Row { Switch(sleepFade, { sleepFade = it }); Text("Fade during last 15 seconds", Modifier.padding(8.dp)) }
+            TextButton(onClick = { playback.setSleep("duration", sleepMinutes.toIntOrNull() ?: 30, sleepFade); sleepDialog = false }) { Text("Start timer") }
+            TextButton(onClick = { playback.setSleep("paragraph"); sleepDialog = false }) { Text("End of paragraph") }
+            TextButton(onClick = { playback.setSleep("chapter"); sleepDialog = false }) { Text("End of chapter") }
+            TextButton(onClick = { playback.setSleep("off"); sleepDialog = false }) { Text("Turn off") }
+        }
+    }, confirmButton = { TextButton(onClick = { sleepDialog = false }) { Text("Close") } })
+    exporting?.let { selection -> AlertDialog(onDismissRequest = { exporting = null }, title = { Text("Export audio") }, text = {
+        Column {
+            Text(selection.description + "\nExport requests no new speech. Compact audiobook export requires complete prepared chapters. Chapter-marker support varies by player.")
+            Row { Switch(exportWholeBook, { exportWholeBook = it }); Text("Whole book (M4A/M4B)", Modifier.padding(8.dp)) }
+            TextButton(onClick = { exporting = null; app.stageAudiobook(exportWholeBook) { audiobookPicker.launch("PageCast-audiobook.m4b") } }) { Text("Save M4B with chapters and cover") }
+            TextButton(onClick = { exporting = null; app.stageAudiobook(exportWholeBook) { audiobookPicker.launch("PageCast-audio.m4a") } }) { Text("Save M4A") }
+        }
+    }, confirmButton = { TextButton(onClick = { exporting = null; app.stageExport(selection) { exportPicker.launch("reader-chapter-${app.chapter + 1}.wav") } }) { Text("Save chapter WAV") } }, dismissButton = { TextButton(onClick = { exporting = null }) { Text("Cancel") } }) }
     if (preparing) AlertDialog(onDismissRequest = { preparing = false }, title = { Text("Prepare this entire chapter?") }, text = { Column { Text("${chapter.title}: ${chapter.paragraphs.sumOf { it.length }} text characters. This analyzes the chapter and generates missing speech, which can incur charges. Audio is retained outside the disposable cache. Keep the app open; cancellation retains completed segments for retry. Changes to voices or pronunciations require preparing again. No other chapters are prepared."); TextButton(onClick = { preparing = false; removingPrepared = true }) { Text("Remove saved chapter audio…") } } }, confirmButton = { TextButton(onClick = { preparing = false; app.prepareOffline() }) { Text("Prepare chapter") } }, dismissButton = { TextButton(onClick = { preparing = false }) { Text("Cancel") } })
     if (removingPrepared) AlertDialog(onDismissRequest = { removingPrepared = false }, title = { Text("Remove prepared audio?") }, text = { Text("Deletes this chapter's retained audio and preparation manifest, not book text or analysis. Regenerating it may incur charges. Exported files are unaffected.") }, confirmButton = { TextButton(onClick = { removingPrepared = false; app.removePreparedChapter() }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { removingPrepared = false }) { Text("Cancel") } })
     if (toc) AlertDialog(onDismissRequest = { toc = false }, title = { Text("Contents") }, text = {
@@ -253,6 +365,7 @@ import kotlinx.coroutines.CancellationException
                     rewriteMessage = ""
                     inspecting = null
                 }) { Text("Edit passage") } }
+                item { TextButton(onClick = { app.task { app.notes.save(book.id, com.geminireader.data.ReadingNote(chapter = chapterIndex, paragraph = segment.paragraph, start = segment.start, end = segment.end, quote = segment.text)); app.status = "Quote saved" }; inspecting = null }) { Text("Save quote / bookmark") } }
                 item { Text(segment.text) }; item { Text("Voice: ${speech.voice}\n${speech.prompt}", Modifier.padding(vertical = 16.dp)) }
                 val quotes = Segmenter.dialogue(chapter.paragraphs).filter { it.paragraph == segment.paragraph && it.q != null }.distinctBy { it.q }
                 if (quotes.size > 1 || segment.q == null) items(quotes) { quote -> TextButton(onClick = { inspecting = quote }) { Text("Inspect ${quote.q}: ${quote.text.take(60)}") } }

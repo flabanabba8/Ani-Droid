@@ -9,7 +9,7 @@ val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint =
 @Serializable data class Chapter(val title: String, val paragraphs: List<String>)
 @Serializable data class Book(val id: String = UUID.randomUUID().toString(), val title: String, val author: String = "", val format: String, val chapters: List<Chapter>, val cover: String = "")
 @Serializable data class BookMeta(val id: String, val title: String, val author: String, val format: String, val chapters: Int, val cover: String)
-@Serializable data class Position(val chapter: Int = 0, val paragraph: Int = 0, val segment: Int = 0, val offsetMs: Long = 0, val audioKey: String = "", val speed: Float = 1f)
+@Serializable data class Position(val chapter: Int = 0, val paragraph: Int = 0, val segment: Int = 0, val offsetMs: Long = 0, val audioKey: String = "", val speed: Float = 1f, val savedAtMs: Long = 0L)
 
 fun atomicWrite(file: File, value: String) {
     file.parentFile?.mkdirs()

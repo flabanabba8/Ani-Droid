@@ -5,7 +5,7 @@ import java.io.File
 import java.util.UUID
 
 @Serializable data class Pronunciation(val id: String = UUID.randomUUID().toString(), val written: String, val spoken: String, val scope: String = "book", val owner: String = "")
-@Serializable data class VoiceProfile(val id: String = UUID.randomUUID().toString(), val label: String, val voice: String = "", val style: String = "")
+@Serializable data class VoiceProfile(val id: String = UUID.randomUUID().toString(), val label: String, val voice: String = "", val style: String = "", val intensity: Float = .5f, val delivery: String = "natural", val locked: Boolean = true)
 @Serializable data class Series(val id: String = UUID.randomUUID().toString(), val name: String, val profiles: List<VoiceProfile> = emptyList())
 @Serializable data class SeriesLink(val series: String = "", val voices: Map<String, String> = emptyMap())
 

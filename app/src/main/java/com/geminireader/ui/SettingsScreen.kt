@@ -50,6 +50,7 @@ import kotlinx.coroutines.withContext
             Button(onClick = { app.saveSettings(draft) }, enabled = !app.busy) { Text("Save") }
         }
         LazyColumn(Modifier.weight(1f).imePadding(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item { BackupControls(app) }
             item { Choice("Appearance", draft.theme, listOf("dark", "light", "system")) { draft = draft.copy(theme = it); app.setTheme(it) } }
             item { Text("Appearance changes apply immediately and are saved automatically.", style = MaterialTheme.typography.bodySmall) }
             item { SpendingCard(app) }

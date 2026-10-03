@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class RejectedPassage(val chapter: Int, val segment: Segment, val reason: String)
 
 /** Book-local records use original text offsets, never pronunciation-adjusted speech offsets. */
-class RejectedPassages(private val books: BookRepository) {
-    private fun file(book: String) = File(books.directory(book), "rejected-passages.json")
+class RejectedPassages(private val books: BookRepository, private val filename: String = "rejected-passages.json") {
+    private fun file(book: String) = File(books.directory(book), filename)
     @Synchronized fun list(book: String): List<RejectedPassage> =
         file(book).takeIf { it.exists() }?.let { json.decodeFromString(it.readText()) } ?: emptyList()
 

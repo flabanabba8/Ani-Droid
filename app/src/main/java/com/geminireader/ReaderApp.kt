@@ -23,12 +23,15 @@ import java.io.File
 
 class ReaderApp : Application() {
     private val intentMutex = Mutex()
+    private val taskMutex = Mutex()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val androidTts by lazy { AndroidTtsClient(this) }
     val kokoro by lazy { KokoroTtsClient(this) }
     val spending by lazy { SpendingTracker(File(filesDir, "spending.json")) }
     lateinit var books: BookRepository
+    val notes by lazy { ReadingNotes(books) }
     val rejectedPassages by lazy { RejectedPassages(books) }
+    val skippedPassages by lazy { RejectedPassages(books, "skipped-passages.json") }
     var rejectionRevision by mutableStateOf(0)
     fun dismissRejections(bookId: String, rejected: List<RejectedPassage>) = task {
         withContext(Dispatchers.IO) { rejectedPassages.dismiss(bookId, rejected) }
@@ -39,7 +42,7 @@ class ReaderApp : Application() {
             val title = book?.takeIf { it.id == bookId }?.title
                 ?: withContext(Dispatchers.IO) { books.load(bookId).title }
             val file = withContext(SpendingBook(bookId, title)) { generate() }
-            withContext(Dispatchers.IO) { rejectedPassages.resolved(bookId, chapter, segment) }
+            withContext(Dispatchers.IO) { rejectedPassages.resolved(bookId, chapter, segment); skippedPassages.resolved(bookId, chapter, segment) }
             withContext(Dispatchers.Main) { rejectionRevision++ }
             return file
         } catch (e: MissingAudio) {
@@ -53,21 +56,16 @@ class ReaderApp : Application() {
     lateinit var performances: PerformanceRepository
     lateinit var offline: OfflineChapters
     var preparing by mutableStateOf(false)
-    private var preparationJob: Job? = null
-    fun cancelPreparation() { preparationJob?.cancel() }
+    var preparationJob: Job? = null
+    fun cancelPreparation() { preparationJob?.cancel(); com.geminireader.playback.PreparationQueue.cancel(this) }
+    suspend fun cancelPreparationAndJoin() { cancelPreparation(); preparationJob?.join() }
     fun removePreparedChapter() = task {
         val target = book ?: return@task; val ch = chapter
-        preparationJob?.cancelAndJoin(); playback.stop()
+        cancelPreparationAndJoin(); playback.stop()
         withContext(Dispatchers.IO) { check(offline.folder(target.id, ch).deleteRecursively()) { "Could not remove prepared audio" } }
         status = "Prepared chapter audio removed; it can be generated again"
     }
-    fun prepareOffline() {
-        if (preparing || savingPassage) return
-        val target = book ?: return
-        val ch = chapter; val s = settings
-        playback.stop(); preparing = true
-        preparationJob = scope.launch {
-            try {
+    suspend fun prepareChapterOffline(target: Book, ch: Int, s: Settings) {
                 status = "Preparing chapter: analyzing…"
                 val segments = playback.prepareChapter(target, ch, s)
                 require(!status.startsWith("Character analysis unavailable")) { "Analysis failed; retry analysis or explicitly choose Narrator mode before preparing" }
@@ -79,7 +77,7 @@ class ReaderApp : Application() {
                 withContext(Dispatchers.IO) { offline.save(target.id, ch, plan) }
                 val engine = TtsEngines.create(s, playback.api, kokoro, androidTts)
                 for ((index, line) in plan.lines.withIndex()) {
-                    ensureActive(); status = "Preparing chapter: ${index + 1}/${plan.lines.size} segments"
+                    currentCoroutineContext().ensureActive(); status = "Preparing chapter: ${index + 1}/${plan.lines.size} segments"
                     withContext(Dispatchers.IO) {
                         val destination = offline.audio(target.id, ch, line.file)
                         if (!runCatching { WavExport.inspect(destination); true }.getOrDefault(false)) {
@@ -91,8 +89,16 @@ class ReaderApp : Application() {
                 }
                 withContext(Dispatchers.IO) { offline.save(target.id, ch, plan.copy(complete = true)) }
                 status = if (plan.signature == offline.signature(target, ch, settings)) "Chapter ready offline — full chapter export available" else "Preparation saved with older settings; prepare again to update"
-            } catch (e: CancellationException) { status = "Preparation canceled; completed segments retained for retry"; throw e }
-            catch (e: Exception) { status = "Chapter preparation failed: ${e.message}. Completed segments retained." }
+    }
+    fun prepareOffline() {
+        if (preparing || savingPassage) return
+        val target = book ?: return
+        val ch = chapter; val s = settings
+        playback.stop(); preparing = true
+        preparationJob = scope.launch {
+            try { prepareChapterOffline(target, ch, s) }
+            catch (e: CancellationException) { status = "Preparation canceled; completed segments retained"; throw e }
+            catch (e: Exception) { status = "Preparation failed; completed segments retained. ${e.message}" }
             finally { preparing = false; playback.cache.pinned.clear() }
         }
     }
@@ -100,6 +106,13 @@ class ReaderApp : Application() {
         val target = book ?: error("Open a book")
         val ready = offline.ready(target, chapter, settings)
         return if (ready != null) PlaybackEngine.ExportSelection(ready.lines.map { offline.audio(target.id, chapter, it.file) }, "Complete prepared chapter: ${ready.lines.size} segments, original 1× speed.") else playback.exportSelection()
+    }
+    var pendingImport by mutableStateOf<com.geminireader.importer.Imported?>(null)
+    fun finishImport(imported: com.geminireader.importer.Imported) = task { finishImportNow(imported) }
+    suspend fun finishImportNow(imported: com.geminireader.importer.Imported) {
+        val saved = withContext(Dispatchers.IO) { books.save(imported.book, imported.cover) }
+        playback.stop(); book = saved; chapter = 0; paragraph = 0; screen = "reader"; refresh(); loadCharacters()
+        status = "Imported ${saved.title}"; rememberBook(saved.id); pendingImport = null
     }
     var library by mutableStateOf(emptyList<BookMeta>())
     var book by mutableStateOf<Book?>(null)
@@ -127,9 +140,27 @@ class ReaderApp : Application() {
         }
         pendingExport = file; status = "Choose where to save the audio"; ready()
     }
+    fun stageAudiobook(wholeBook: Boolean, ready: () -> Unit) = task {
+        val target = book ?: error("Open a book")
+        val selectedChapter = chapter
+        val file = File(cacheDir, "reader-export.m4b")
+        status = "Encoding audiobook…"
+        withContext(Dispatchers.IO) {
+            val chapters = (if (wholeBook) target.chapters.indices.toList() else listOf(selectedChapter)).map { ch ->
+                val plan = offline.ready(target, ch, settings) ?: error("Prepare chapter ${ch + 1} with the current settings before audiobook export")
+                AudiobookExport.ChapterAudio(target.chapters[ch].title, plan.lines.map { offline.audio(target.id, ch, it.file) })
+            }
+            val context = currentCoroutineContext()
+            val cover = android.graphics.BitmapFactory.decodeFile(File(books.directory(target.id), "cover").path)?.let { bitmap ->
+                try { java.io.ByteArrayOutputStream().use { out -> bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out); out.toByteArray() } } finally { bitmap.recycle() }
+            }
+            AudiobookExport.write(chapters, file, target.title, target.author, cover) { context.ensureActive() }
+        }
+        pendingExport = file; status = "Choose where to save the audiobook"; ready()
+    }
     fun finishExport(uri: Uri?) = task {
         // The document picker can outlive our process; the completed staging file is recoverable.
-        val file = pendingExport ?: File(cacheDir, "reader-export.wav").takeIf { it.isFile } ?: return@task
+        val file = pendingExport ?: listOf(File(cacheDir, "reader-export.wav"), File(cacheDir, "reader-export.m4b")).filter { it.isFile }.maxByOrNull { it.lastModified() } ?: return@task
         try {
             if (uri != null) withContext(Dispatchers.IO) {
                 requireNotNull(contentResolver.openOutputStream(uri, "wt")) { "Could not open export destination" }.use { output -> file.inputStream().use { it.copyTo(output) } }
@@ -212,9 +243,9 @@ class ReaderApp : Application() {
     fun saveSettings(value: Settings, test: Boolean = false) = task {
         val valid = validateSettings(value)
         if (settings.engine == "kokoro" && valid.engine != "kokoro") {
-            preparationJob?.cancelAndJoin(); playback.stopAndJoin(); kokoro.release()
+            cancelPreparationAndJoin(); playback.stopAndJoin(); kokoro.release()
         } else if (settings.engine == "android" && valid.engine != "android") {
-            preparationJob?.cancelAndJoin(); playback.stopAndJoin(); androidTts.release()
+            cancelPreparationAndJoin(); playback.stopAndJoin(); androidTts.release()
         } else playback.stop()
         settingsStore.save(valid); settings = valid; status = "Settings saved"
         if (test) {
@@ -223,7 +254,7 @@ class ReaderApp : Application() {
         }
     }
     fun deleteKokoro() = task {
-        preparationJob?.cancelAndJoin(); playback.stopAndJoin(); kokoro.deleteDownloaded()
+        cancelPreparationAndJoin(); playback.stopAndJoin(); kokoro.deleteDownloaded()
         status = "Kokoro downloads deleted"
     }
     fun fetchModels(value: Settings) = task {
@@ -275,7 +306,7 @@ class ReaderApp : Application() {
                 val line = lines[segment.q]
                 val original = byId[line?.speaker]
                 val profile = profiles[link.voices[original?.id]]
-                val person = if (profile == null) original else original?.copy(voice = profile.voice.ifBlank { original.voice }, voiceStyle = profile.style)
+                val person = if (profile == null) original else original?.copy(voice = profile.voice.ifBlank { original.voice }, voiceStyle = profile.style, intensity = profile.intensity, delivery = profile.delivery, performanceLocked = profile.locked)
                 val speech = VoiceDirector.direct(segment, settings, person, line?.delivery.orEmpty(), end)
                 val spoken = PronunciationRules.apply(speech.text, pronunciation)
                 require(spoken.toByteArray().size <= 4000) { "Pronunciation replacements made this segment too long; shorten the spoken replacements" }
@@ -295,10 +326,10 @@ class ReaderApp : Application() {
         scope.launch { settingsStore.flow.collect { settings = it } }; scope.launch { refresh() }
     }
     suspend fun refresh() { library = withContext(Dispatchers.IO) { books.list() } }
-    fun task(action: suspend () -> Unit) = scope.launch {
+    fun task(action: suspend () -> Unit) = scope.launch { taskMutex.withLock {
         busy = true
         try { action() } catch (e: CancellationException) { throw e } catch (e: Exception) { status = e.message ?: "Operation failed" } finally { busy = false }
-    }
+    } }
     fun open(id: String) = task {
         val loaded = withContext(Dispatchers.IO) { books.load(id) to books.readingPosition(id) }
         book = loaded.first; chapter = loaded.second.chapter.coerceIn(0, loaded.first.chapters.lastIndex)
@@ -321,7 +352,7 @@ class ReaderApp : Application() {
         if (savingPassage) return@task
         savingPassage = true
         try {
-            preparationJob?.cancelAndJoin()
+            cancelPreparationAndJoin()
             playback.stopAndJoin()
             analyzer.cancelBook(id)
             val updated = withContext(Dispatchers.IO) { books.editPassage(id, ch, index, original, replacement) }
@@ -334,7 +365,7 @@ class ReaderApp : Application() {
             saved()
         } finally { savingPassage = false }
     }
-    fun saveCharacter(value: Character) = task { val id = book?.id ?: return@task; playback.stop(); cast = cast.map { if (it.id == value.id) value.copy(edited = true) else it }; withContext(Dispatchers.IO) { analyzer.saveCast(id, cast) }; status = "Character saved" }
+    fun saveCharacter(value: Character) = task { val id = book?.id ?: return@task; cancelPreparationAndJoin(); playback.stop(); cast = cast.map { if (it.id == value.id) value.copy(edited = true, voice = if (value.performanceLocked && value.voice.isBlank()) VoiceDirector.distinctVoice(value, settings) else value.voice) else it }; withContext(Dispatchers.IO) { analyzer.saveCast(id, cast) }; status = "Character saved" }
     fun reassign(q: String, speaker: String) = task { val id = book?.id ?: return@task; playback.stop(); withContext(Dispatchers.IO) { analyzer.reassign(id, chapter, q, speaker) }; loadCharacters(); status = "Speaker updated" }
     fun analyzeWholeBook() = task {
         val readingBook = book ?: return@task
@@ -350,7 +381,7 @@ class ReaderApp : Application() {
     }
     fun savePosition() { val id = book?.id ?: return; books.position(id, Position(chapter, paragraph)) }
     fun saveReadingPosition() { val id = book?.id ?: return; val pos = Position(chapter, paragraph); scope.launch(Dispatchers.IO) { books.readingPosition(id, pos) } }
-    fun delete(id: String) = task { preparationJob?.cancelAndJoin(); if (playback.activeBookId == id) playback.stop(); analyzer.cancelBook(id); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
+    fun delete(id: String) = task { cancelPreparationAndJoin(); if (playback.activeBookId == id) playback.stop(); analyzer.cancelBook(id); withContext(Dispatchers.IO) { books.delete(id) }; if (book?.id == id) book = null; refresh() }
     fun handle(intent: Intent) = task {
         intentMutex.withLock {
         settings = settingsStore.flow.first()
@@ -476,10 +507,9 @@ class ReaderApp : Application() {
                     require(debugName.matches(Regex("[a-zA-Z0-9_.-]+"))) { "Invalid debug filename" }
                     importer.file(File(filesDir, "debug-import/$debugName"))
                 } else importer.uri(uri!!)
-                books.save(result.book, result.cover)
+                result
             }
-            playback.stop(); book = imported; chapter = 0; paragraph = 0; screen = "reader"; refresh(); loadCharacters(); status = "Imported ${imported.title}"
-            rememberBook(imported.id)
+            if (debugName != null) finishImportNow(imported) else { pendingImport = imported; status = "Review import options" }
         }
         if (BuildConfig.DEBUG) {
             intent.getStringExtra("debug_book")?.let { id -> book = withContext(Dispatchers.IO) { books.load(id) }; screen = "reader" }

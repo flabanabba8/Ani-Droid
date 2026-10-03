@@ -29,6 +29,7 @@ class PlaybackEngine(private val app: ReaderApp) {
     private var segments = emptyList<Segment>()
     private var preparedSettings: Settings? = null
     private var restoring = false
+    private var pausedAt = 0L
     private val durations = mutableListOf<Long>()
     var readyMs by mutableLongStateOf(0L)
     private fun updateBuffer() { readyMs = BufferPolicy.remainingMs(durations, player.currentMediaItemIndex.coerceAtLeast(0), player.currentPosition, speed) }
@@ -38,6 +39,19 @@ class PlaybackEngine(private val app: ReaderApp) {
     var speaking by mutableStateOf(false)
     var loading by mutableStateOf(false)
     var speechFailed by mutableStateOf(false)
+    var sleepMode by mutableStateOf("off")
+    var sleepRemainingMs by mutableLongStateOf(0L)
+    private var sleepDeadline = 0L
+    private var sleepFade = true
+    fun setSleep(mode: String, minutes: Int = 30, fade: Boolean = true) {
+        require(mode in listOf("off", "duration", "paragraph", "chapter"))
+        sleepMode = mode; sleepFade = fade; player.volume = 1f
+        sleepRemainingMs = if (mode == "duration") minutes.coerceIn(1, 240) * 60_000L else 0L
+        sleepDeadline = android.os.SystemClock.elapsedRealtime() + sleepRemainingMs
+    }
+    private fun sleepNow() {
+        player.pause(); setSleep("off"); app.status = "Sleep timer finished"
+    }
     private var retryParagraph = 0
     fun retrySpeech() {
         val target = playbackBook ?: return
@@ -55,11 +69,16 @@ class PlaybackEngine(private val app: ReaderApp) {
     init {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { speaking = isPlaying; persist() }
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { persist() }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) pausedAt = System.currentTimeMillis()
+                else if (pausedAt > 0 && System.currentTimeMillis() - pausedAt >= 300_000) { pausedAt = 0; seekBy(-5000) }
+                persist()
+            }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val parts = mediaItem?.mediaId?.split(':') ?: return
                 if (parts.firstOrNull()?.toIntOrNull() != generation) return
                 val index = parts.getOrNull(1)?.toIntOrNull() ?: return
+                if (sleepMode == "paragraph" && active != null && segments.getOrNull(index)?.paragraph != active?.paragraph) sleepNow()
                 active = segments.getOrNull(index)
                 active?.let { segment ->
                     val s = speechFor(segment, app.settings, segments.getOrNull(index + 1)?.paragraph != segment.paragraph)
@@ -77,6 +96,11 @@ class PlaybackEngine(private val app: ReaderApp) {
         app.scope.launch {
             var ticks = 0
             while (isActive) {
+                if (sleepMode == "duration") {
+                    sleepRemainingMs = (sleepDeadline - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                    if (sleepRemainingMs == 0L) sleepNow()
+                    else if (sleepFade) player.volume = (sleepRemainingMs / 15_000f).coerceIn(0f, 1f)
+                }
                 val duration = player.duration
                 progress = if (duration > 0) (player.currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f
                 updateBuffer()
@@ -91,15 +115,46 @@ class PlaybackEngine(private val app: ReaderApp) {
         val index = player.currentMediaItem?.mediaId?.substringAfter(':')?.toIntOrNull() ?: return
         val segment = segments.getOrNull(index) ?: return
         val position = Position(playbackChapter, segment.paragraph, segment.start, player.currentPosition,
-            player.currentMediaItem?.localConfiguration?.uri?.lastPathSegment.orEmpty(), speed)
+            player.currentMediaItem?.localConfiguration?.uri?.lastPathSegment.orEmpty(), speed, System.currentTimeMillis())
         // Small atomic bookmark writes are serialized on the player thread; no older async write can win.
         runCatching { app.books.position(id, position) }.onFailure { app.status = "Could not save playback position" }
     }
-    fun stop() { persist(); restoring = true; generation++; job?.cancel(); complete = false; player.stop(); player.clearMediaItems(); active = null; activeBookId = ""; playbackBook = null; loading = false; cache.pinned.clear(); durations.clear(); readyMs = 0; restoring = false }
+    fun stop() { persist(); restoring = true; generation++; job?.cancel(); complete = false; player.playWhenReady = false; player.stop(); player.clearMediaItems(); active = null; activeBookId = ""; playbackBook = null; loading = false; cache.pinned.clear(); durations.clear(); readyMs = 0; restoring = false }
     suspend fun stopAndJoin() { val previous = job; stop(); previous?.join() }
     fun toggle() {
+        if (activeBookId == app.book?.id && activeChapter == app.chapter && player.playbackState == Player.STATE_ENDED && complete) { nextChapter(); return }
         if (activeBookId == app.book?.id && activeChapter == app.chapter && (player.mediaItemCount > 0 || loading)) { player.playWhenReady = !player.playWhenReady; persist() }
         else app.book?.let { play(it, app.chapter, app.paragraph, resume = true) }
+    }
+    fun seekBy(deltaMs: Long) {
+        if (player.mediaItemCount == 0) return
+        var index = player.currentMediaItemIndex.coerceAtLeast(0)
+        var offset = player.currentPosition + deltaMs
+        while (offset < 0 && index > 0) { index--; offset += durations.getOrElse(index) { 0 } }
+        while (index < player.mediaItemCount - 1 && offset >= durations.getOrElse(index) { Long.MAX_VALUE }) {
+            offset -= durations.getOrElse(index) { 0 }; index++
+        }
+        player.seekTo(index, offset.coerceIn(0, durations.getOrElse(index) { player.duration.coerceAtLeast(0) }))
+        persist()
+    }
+    fun seekSentence(forward: Boolean) {
+        val index = player.currentMediaItemIndex
+        val segment = active ?: return
+        val duration = player.duration.takeIf { it > 0 } ?: return
+        val starts = Segmenter.sentences(segment.text).map { duration * it.first / segment.text.length.coerceAtLeast(1) }
+        val target = if (forward) starts.firstOrNull { it > player.currentPosition + 200 } else starts.lastOrNull { it < player.currentPosition - 500 }
+        if (target != null) player.seekTo(index, target)
+        else if (forward && index + 1 < player.mediaItemCount) player.seekTo(index + 1, 0)
+        else if (!forward && index > 0) {
+            val previousIndex = player.getMediaItemAt(index - 1).mediaId.substringAfter(':').toIntOrNull()
+            val previous = previousIndex?.let { segments.getOrNull(it) }
+            val previousDuration = durations.getOrElse(index - 1) { 0L }
+            val start = previous?.let { Segmenter.sentences(it.text).lastOrNull()?.first?.let { offset -> previousDuration * offset / it.text.length.coerceAtLeast(1) } } ?: 0L
+            player.seekTo(index - 1, start)
+        }
+        else if (!forward) player.seekTo(0, 0)
+        else app.status = "Next sentence is not buffered yet"
+        persist()
     }
     fun changeSpeed(value: Float) { speed = value; player.playbackParameters = PlaybackParameters(value); updateBuffer(); persist() }
     fun play(book: Book, chapter: Int, paragraph: Int, resume: Boolean = false) {
@@ -108,7 +163,8 @@ class PlaybackEngine(private val app: ReaderApp) {
         speechFailed = false; retryParagraph = paragraph
         app.rememberBook(book.id)
         if (!resume && activeBookId == book.id && activeChapter == chapter && preparedSettings == app.settings) {
-            val ready = segments.indexOfFirst { it.paragraph == paragraph }
+            val segmentIndex = segments.indexOfFirst { it.paragraph == paragraph }
+            val ready = (0 until player.mediaItemCount).firstOrNull { player.getMediaItemAt(it).mediaId == "$generation:$segmentIndex" } ?: -1
             val uri = if (ready in 0 until player.mediaItemCount) player.getMediaItemAt(ready).localConfiguration?.uri else null
             if (uri?.path?.let { File(it).exists() } == true) {
                 uri.lastPathSegment?.let { cache.pinned.add(it) }
@@ -157,10 +213,18 @@ class PlaybackEngine(private val app: ReaderApp) {
                         pending[i] = async { generate(i) }
                     }
                     var retryStatus = ""
-                    val (file, reused) = retryPrefetched(pending.remove(index)!!, onRetry = { attempt ->
+                    val generated = try { retryPrefetched(pending.remove(index)!!, onRetry = { attempt ->
                         retryStatus = "Retrying speech for paragraph ${segments[index].paragraph + 1} ($attempt/2)…"
                         app.status = retryStatus
-                    }) { generate(index) }
+                    }) { generate(index) } } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                        retryParagraph = segments[index].paragraph
+                        if (!settings.skipFailedSpeech) throw e
+                        withContext(Dispatchers.IO) { app.skippedPassages.record(book.id, chapter, segments[index], "Generation failed after available retries") }
+                        app.rejectionRevision++
+                        app.status = "Skipped paragraph ${segments[index].paragraph + 1}; saved in repair list"
+                        continue
+                    }
+                    val (file, reused) = generated
                     if (retryStatus.isNotEmpty() && app.status == retryStatus) app.status = ""
                     val durationMs = withContext(Dispatchers.IO) { WavExport.inspect(file).durationMs }
                     ensureActive()
@@ -171,15 +235,17 @@ class PlaybackEngine(private val app: ReaderApp) {
                         .setMediaMetadata(MediaMetadata.Builder().setTitle(book.title).setArtist(label).setAlbumTitle(book.chapters[chapter].title).build()).build()
                     player.addMediaItem(item)
                     durations += durationMs
-                    if (index == 0) {
-                        if (resume && reused && saved.chapter == chapter) player.seekTo(0, BufferPolicy.resumeOffset(saved.audioKey, file.name, saved.offsetMs, durationMs))
+                    if (player.mediaItemCount == 1) {
+                        if (resume && reused && saved.chapter == chapter) player.seekTo(0, (BufferPolicy.resumeOffset(saved.audioKey, file.name, saved.offsetMs, durationMs) - if (saved.savedAtMs > 0 && System.currentTimeMillis() - saved.savedAtMs >= 300_000) 5000 else 0).coerceAtLeast(0))
                         player.prepare(); restoring = false; persist(); loading = false
                         if (app.status == "Preparing audio…" || app.status.startsWith("Analyzing")) app.status = ""
                     }
-                    else if (wasEnded) { player.seekTo(index, 0); player.prepare() }
+                    else if (wasEnded) { player.seekTo(player.mediaItemCount - 1, 0); player.prepare() }
                     updateBuffer()
                 }
                 complete = true
+                loading = false; restoring = false
+                if (player.mediaItemCount == 0) { app.status = "No playable audio; see the repair list"; return@supervisorScope }
                 if (player.playbackState == Player.STATE_ENDED && player.playWhenReady) nextChapter()
                 }
             } catch (e: CancellationException) { throw e } catch (e: Exception) { app.status = e.message ?: "Could not prepare speech"; loading = false; restoring = false; speechFailed = true }
@@ -191,10 +257,11 @@ class PlaybackEngine(private val app: ReaderApp) {
         require(player.mediaItemCount > 0 && activeBookId.isNotBlank()) { "Play some book audio before exporting" }
         val files = (0 until player.mediaItemCount).map { File(requireNotNull(player.getMediaItemAt(it).localConfiguration?.uri?.path)) }
         require(files.all { it.isFile }) { "Some audio is no longer cached; play that passage again" }
-        val last = segments.getOrNull(files.lastIndex) ?: error("No book audio")
+        val last = segments.getOrNull(player.getMediaItemAt(files.lastIndex).mediaId.substringAfter(':').toIntOrNull() ?: -1) ?: error("No book audio")
         return ExportSelection(files, "${files.size} generated segments; paragraphs ${segments.first().paragraph + 1}–${last.paragraph + 1}. Only generated audio is included, possibly ending partway through the last paragraph. WAV uses original 1× speed.")
     }
     private fun nextChapter() {
+        if (sleepMode in listOf("chapter", "paragraph")) { sleepNow(); return }
         val book = playbackBook ?: return
         if (playbackChapter < book.chapters.lastIndex) {
             val next = playbackChapter + 1

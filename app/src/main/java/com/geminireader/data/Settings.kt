@@ -32,6 +32,7 @@ import kotlinx.serialization.Serializable
     val narratorPrompt: String = "Read with warmth, clarity and natural pacing.",
     val characterMode: String = "performance", val prefetch: Int = 3,
     val bufferSeconds: Int = 120,
+    val skipFailedSpeech: Boolean = false,
     val withinPauseMs: Int = 80, val paragraphPauseMs: Int = 350,
     val fontSize: Int = 20, val theme: String = "dark", val cacheMb: Int = 256,
     val cloudUrl: String = "https://texttospeech.googleapis.com", val geminiUrl: String = "https://generativelanguage.googleapis.com"
