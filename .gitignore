@@ -20,3 +20,18 @@ debug-broker.json
 *.pem
 *.jks
 *.keystore
+
+# Local upstream research and device/build configuration
+.reference/
+local.properties
+*.jks
+*.keystore
+
+# Private catalog state, connection settings and TLS material
+*.p12
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+catalog-connection.json
+connection.json
+catalog-server/state/

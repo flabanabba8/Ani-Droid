@@ -1,0 +1,11 @@
+Ani-Droid — Android UI and native provider adaptations.
+ani-cli: https://github.com/pystardust/ani-cli
+Source revision: 21ed4a0a6354688622b5a967d93ba96d851d0ef2 (v5.1.0)
+Anime search, episode and stream resolution adapted under GPL-3.0-or-later.
+Luffy: https://github.com/DemonKingSwarn/luffy
+Source revision: 0e0abc6bb1c10a02c2d0db2711a04ca9bb836deb
+The server uses Luffy's Cinejoy engine under GPL-3.0.
+Movie/TV metadata comes from TMDB, as in Luffy; listings do not guarantee playable streams.
+This Ani-Droid module is licensed GPL-3.0-or-later. See accompanying licenses.
+
+The server/desktop VixSrc and LookMovie fallbacks are adapted from MADPANDA3D/pandaflix f6484787ba5a, GPL-3.0. https://github.com/MADPANDA3D/pandaflix

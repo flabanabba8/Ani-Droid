@@ -1,0 +1,103 @@
+diff --git a/cmd/root.go b/cmd/root.go
+index e00f856..e0f4233 100644
+--- a/cmd/root.go
++++ b/cmd/root.go
+@@ -263,7 +263,7 @@ var rootCmd = &cobra.Command{
+ 						return err
+ 					}
+ 					lastPos := getLastPosition(histDB, ctx.Title, 0, 0)
+-					result, err := core.PlayWithControls(streamURL, ctx.Title, referer, USER_AGENT, streamOrigin(histProviderName), subtitles, debugFlag, lastPos, core.HookContext{
++					result, err := core.PlayWithControls(streamURL, ctx.Title, referer, USER_AGENT, streamOriginForReferer(histProviderName, referer), subtitles, debugFlag, lastPos, core.HookContext{
+ 						Title:    ctx.Title,
+ 						URL:      link,
+ 						Provider: histProviderName,
+@@ -471,7 +471,7 @@ var rootCmd = &cobra.Command{
+ 						return err
+ 					}
+ 					lastPos := getLastPosition(histDB, ctx.Title, 0, 0)
+-					result, err := core.PlayWithControls(streamURL, ctx.Title, referer, USER_AGENT, streamOrigin(providerName), subtitles, debugFlag, lastPos, core.HookContext{
++					result, err := core.PlayWithControls(streamURL, ctx.Title, referer, USER_AGENT, streamOriginForReferer(providerName, referer), subtitles, debugFlag, lastPos, core.HookContext{
+ 						Title:    ctx.Title,
+ 						URL:      link,
+ 						Provider: providerName,
+@@ -731,7 +731,7 @@ var rootCmd = &cobra.Command{
+ 					fmt.Printf("Referer: %s\n", referer)
+ 				}
+ 				lastPos := getLastPosition(histDB, ctx.Title, 0, 0)
+-				result, err := core.PlayWithControls(streamURL, ctx.Title, referer, USER_AGENT, streamOrigin(providerName), subtitles, debugFlag, lastPos, core.HookContext{
++				result, err := core.PlayWithControls(streamURL, ctx.Title, referer, USER_AGENT, streamOriginForReferer(providerName, referer), subtitles, debugFlag, lastPos, core.HookContext{
+ 					Title:    ctx.Title,
+ 					URL:      link,
+ 					Provider: providerName,
+@@ -858,6 +858,12 @@ func resolveStreamURL(
+ 		}
+ 	} else if isAnimeProvider(providerName) || strings.EqualFold(providerName, "cinejoy") || strings.EqualFold(providerName, "youtube") {
+ 		streamURL = link
++        if idx := strings.Index(streamURL, "|sources="); idx != -1 {
++            sources := streamURL[idx+9:]
++            streamURL = streamURL[:idx]
++            if next := strings.Index(sources, "|"); next != -1 { streamURL += sources[next:]; sources = sources[:next] }
++            if decoded, e := url.QueryUnescape(sources); e == nil { fmt.Println("Sources: " + decoded) }
++        }
+ 		if idx := strings.Index(streamURL, "|referer="); idx != -1 {
+ 			refererStr := streamURL[idx+9:]
+ 			streamURL = streamURL[:idx]
+@@ -1064,7 +1070,7 @@ func buildProcessStream(
+ 				fmt.Printf("Referer: %s\n", referer)
+ 			}
+ 			lastPos := getLastPosition(histDB, ctx.Title, season, episode)
+-			posSecs, playErr := core.Play(streamURL, name, referer, USER_AGENT, streamOrigin(providerName), subtitles, debugMode, lastPos, core.HookContext{
++			posSecs, playErr := core.Play(streamURL, name, referer, USER_AGENT, streamOriginForReferer(providerName, referer), subtitles, debugMode, lastPos, core.HookContext{
+ 				Title:    ctx.Title,
+ 				URL:      link,
+ 				Season:   season,
+@@ -1157,7 +1163,7 @@ func playSeriesWithControls(
+ 		}
+ 
+ 		lastPos := getLastPosition(histDB, ctx.Title, seasonNum, ewn.num)
+-		result, err := core.PlayWithControls(streamURL, ctx.Title+" - "+ep.Name, referer, USER_AGENT, streamOrigin(providerName), subtitles, debugMode, lastPos, core.HookContext{
++		result, err := core.PlayWithControls(streamURL, ctx.Title+" - "+ep.Name, referer, USER_AGENT, streamOriginForReferer(providerName, referer), subtitles, debugMode, lastPos, core.HookContext{
+ 			Title:    ctx.Title,
+ 			URL:      link,
+ 			Season:   seasonNum,
+@@ -1220,3 +1226,10 @@ var previewCmd = &cobra.Command{
+ 		core.PreviewWithBackend(fullPath, backendFlag)
+ 	},
+ }
++
++// The independent fallback requires its own origin on playback requests.
++func streamOriginForReferer(providerName, referer string) string {
++ if referer == providers.VixSrcBaseURL+"/" { return providers.VixSrcBaseURL }
++ if referer == providers.LookMovieBaseURL+"/" { return providers.LookMovieBaseURL }
++ return streamOrigin(providerName)
++}
+diff --git a/core/providers/cinejoy.go b/core/providers/cinejoy.go
+index 5c75642..7ed1e7d 100644
+--- a/core/providers/cinejoy.go
++++ b/core/providers/cinejoy.go
+@@ -37,7 +37,7 @@ const (
+ 	cjMaxConcurrency   = 3
+ 	cjHTTPTimeout      = 15 * time.Second
+ 	cjSealTimeout      = 5 * time.Second
+-	cjRaceTimeout      = 60 * time.Second
++	cjRaceTimeout      = 25 * time.Second
+ 	cjPerServerTimeout = 25 * time.Second
+ 	cjAuthBodyLimit    = 4 << 20
+ 	cjPlaylistLimit    = 4 << 20
+@@ -340,6 +340,16 @@ func (c *Cinejoy) GetServers(id string) ([]core.Server, error) {
+ }
+ 
+ func (c *Cinejoy) GetLink(serverID string) (string, error) {
++ link, err := c.GetCinejoyLink(serverID)
++ if err == nil { return link + "|sources=" + url.QueryEscape("Cinejoy available"), nil }
++ link, err = NewVixSrc(c.Client).GetLink(serverID)
++ if err == nil { return link + "|referer=" + url.QueryEscape(VixSrcBaseURL+"/") + "|sources=" + url.QueryEscape("Cinejoy unavailable, VixSrc available"), nil }
++ link, err = NewLookMovie(c.Client).GetLink(serverID)
++ if err == nil { return link + "|referer=" + url.QueryEscape(LookMovieBaseURL+"/") + "|sources=" + url.QueryEscape("Cinejoy unavailable, VixSrc unavailable, LookMovie available"), nil }
++ return "", fmt.Errorf("Cinejoy, VixSrc and LookMovie could not resolve this title. Retry or choose another title")
++}
++
++func (c *Cinejoy) GetCinejoyLink(serverID string) (string, error) {
+ 	cj, err := parseCinejoyID(serverID)
+ 	if err != nil {
+ 		return "", err
