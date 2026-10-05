@@ -8,6 +8,10 @@ An Android client for watching anime and movies/TV, with offline downloads and a
 
 Version 0.7.0. Android 8+ (API 26). No public release or F-Droid submission has been made; build it yourself.
 
+## Install
+
+Download `Ani-Droid-0.7.0-debug.apk` from the [latest release](../../releases/latest) and open it on your phone (Android 8+). You will need to allow installs from your browser or file manager. This build is signed with a debug key, not a release key, so it is for early users; Android will only update it with an APK signed with the same key. Check the SHA-256 in the release notes if you want to verify the download.
+
 ## Features
 
 - Shared catalog with live search, source/genre/type filters, favorites, watchlist, history and Continue Watching
