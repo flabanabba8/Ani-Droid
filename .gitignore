@@ -1,0 +1,25 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+__pycache__/
+*.log
+
+# Credentials and signing material
+.env
+.env.*
+*.pem
+*.jks
+*.keystore
+*.p12
+
+# Local upstream research copies and device configuration
+.reference/
+
+# Private catalog state, connection settings and TLS material
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+catalog-connection.json
+connection.json
+catalog-server/state/

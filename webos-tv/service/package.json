@@ -1,0 +1,7 @@
+{
+  "name": "dev.anidroid.tv.service",
+  "version": "0.2.0",
+  "description": "Ani-Droid catalog connection",
+  "main": "service.js",
+  "license": "GPL-3.0-or-later"
+}
