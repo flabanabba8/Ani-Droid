@@ -440,14 +440,20 @@ class LibraryModel(app: Application) : AndroidViewModel(app) {
         AlertDialog(onDismissRequest = { about = false }, title = { Text("Ani-Droid 0.7") }, text = { LazyColumn { item { Text("Independent Android player using provider logic from ani-cli and Luffy. ani-cli works directly on your phone. Luffy uses your catalog server to find streams; video plays on your device. Downloads stay on this device.\n\n$notice") }; items(listOf("ani-cli-GPL-3.0.txt", "luffy-GPL-3.0.txt")) { name -> var show by remember { mutableStateOf(false) }; TextButton(onClick = { show = !show }) { Text(name) }; if(show) Text(remember { context.assets.open("licenses/$name").bufferedReader().use { it.readText() } }) } } }, confirmButton = { TextButton(onClick = { about = false }) { Text("Done") } })
     }
 }
+/** In-memory poster cache: scrolling back through a list re-uses decoded bitmaps instead of downloading them again. */
+private object PosterCache {
+    val bitmaps = object : android.util.LruCache<String, android.graphics.Bitmap>((Runtime.getRuntime().maxMemory() / 16).toInt().coerceIn(4 shl 20, 48 shl 20)) {
+        override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.byteCount
+    }
+}
 @Composable private fun Poster(title: Title, model: LibraryModel) {
-    var bitmap by remember(title.poster) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var bitmap by remember(title.poster) { mutableStateOf(PosterCache.bitmaps.get(title.poster)) }
     LaunchedEffect(title.poster) {
-        if(title.poster.startsWith("https://")) bitmap = withContext(Dispatchers.IO) { runCatching {
+        if(bitmap == null && title.poster.startsWith("https://")) bitmap = withContext(Dispatchers.IO) { runCatching {
             model.providers.http.newCall(okhttp3.Request.Builder().url(title.poster).build()).execute().use { r ->
                 if(!r.isSuccessful) null else r.body.byteStream().use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = 2 }) }
             }
-        }.getOrNull() }
+        }.getOrNull() }?.also { PosterCache.bitmaps.put(title.poster, it) }
     }
     Box(Modifier.fillMaxWidth().aspectRatio(0.72f).clipToBounds().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
         if(bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)

@@ -44,6 +44,7 @@ object OfflineDownloads {
     private var instance: DownloadManager? = null
     private var mediaCache: SimpleCache? = null
     private val executor=Executors.newFixedThreadPool(2)
+    private val captionClient by lazy { okhttp3.OkHttpClient.Builder().callTimeout(25,java.util.concurrent.TimeUnit.SECONDS).build() }
     private fun directory(context: Context) = File(context.getExternalFilesDir(null) ?: context.filesDir,"offline").apply { mkdirs() }
     @Synchronized fun manager(context: Context): DownloadManager {
         instance?.let { return it }
@@ -51,8 +52,7 @@ object OfflineDownloads {
         val db=StandaloneDatabaseProvider(app)
         mediaCache=SimpleCache(File(directory(app),"media"),NoOpCacheEvictor(),db)
         val downloaderFactory=DownloaderFactory { request ->
-            val saved=playingFromJson(JSONObject(String(request.data,Charsets.UTF_8)))
-            RefreshingDownloader(app,request) { active -> val current=playingFromJson(JSONObject(String(active.data)));DefaultDownloaderFactory(cacheFactory(app,current.stream,false),executor).createDownloader(active) }
+            RefreshingDownloader(app,request) { active -> val current=playingFromJson(JSONObject(String(active.data,Charsets.UTF_8)));DefaultDownloaderFactory(cacheFactory(app,current.stream,false),executor).createDownloader(active) }
         }
         return DownloadManager(app,DefaultDownloadIndex(db),downloaderFactory).also { manager ->
             instance=manager;manager.maxParallelDownloads=1;manager.minRetryCount=3
@@ -95,9 +95,8 @@ object OfflineDownloads {
                 val folder=File(directory(app),id).apply { mkdirs() }
                 val extension=if(caption.url.substringBefore('?').endsWith(".srt")) "srt" else "vtt"
                 val file=File(folder,"subtitle.$extension")
-                val client=okhttp3.OkHttpClient.Builder().callTimeout(25,java.util.concurrent.TimeUnit.SECONDS).build()
                 val request=okhttp3.Request.Builder().url(caption.url).apply { playing.stream.headers.forEach { (k,v) -> header(k,v) } }.build()
-                client.newCall(request).execute().use { r ->
+                captionClient.newCall(request).execute().use { r ->
                     check(r.isSuccessful) { "Could not save subtitles. Retry the download." }
                     val source=r.body.source()
                     check(!source.request(4L*1024*1024+1)) { "Subtitle file is too large." }
