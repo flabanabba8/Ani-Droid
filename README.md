@@ -6,7 +6,9 @@ An Android client for watching anime and movies/TV, with offline downloads and a
 - **Movies and TV** are resolved through a private catalog server and a bridge around [Luffy](https://github.com/DemonKingSwarn/luffy). Video still plays straight from the provider to the phone.
 - An experimental **LG webOS TV** app uses the same catalog server.
 
-Version 0.7.0. Android 8+ (API 26). No public release or F-Droid submission has been made; build it yourself.
+Current source: version 0.7.1. Android 8+ (API 26). F-Droid submission has not been made.
+
+Version 0.7.1 promotes Canary’s poster caching, reduced download allocations and release-size optimizations. The published APK remains 0.7.0; build current source for 0.7.1.
 
 ## Features
 
