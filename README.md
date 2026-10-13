@@ -6,11 +6,13 @@ An Android client for watching anime and movies/TV, with offline downloads and a
 - **Movies and TV** are resolved through a private catalog server and a bridge around [Luffy](https://github.com/DemonKingSwarn/luffy). Video still plays straight from the provider to the phone.
 - An experimental **LG webOS TV** app uses the same catalog server.
 
-Version 0.7.0. Android 8+ (API 26). No public release or F-Droid submission has been made; build it yourself.
+Current source: version 0.7.1. Android 8+ (API 26). F-Droid submission has not been made.
+
+Version 0.7.1 promotes Canary’s poster caching, reduced download allocations and release-size optimizations.
 
 ## Install
 
-Download `Ani-Droid-0.7.0-debug.apk` from the [latest release](../../releases/latest) and open it on your phone (Android 8+). You will need to allow installs from your browser or file manager. This build is signed with a debug key, not a release key, so it is for early users; Android will only update it with an APK signed with the same key. Check the SHA-256 in the release notes if you want to verify the download.
+The published APK is currently 0.7.0; build the current source for 0.7.1. Download `Ani-Droid-0.7.0-debug.apk` from the [latest release](../../releases/latest) and open it on your phone (Android 8+). You will need to allow installs from your browser or file manager. This build is signed with a debug key, not a release key, so it is for early users; Android will only update it with an APK signed with the same key. Check the SHA-256 in the release notes if you want to verify the download.
 
 ## Features
 
