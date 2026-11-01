@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <application android:label="Ani-Droid" android:icon="@mipmap/ic_launcher_v2" android:roundIcon="@mipmap/ic_launcher_v2" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
+    <application android:label="Ani-Droid" android:icon="@mipmap/ic_launcher_v2" android:roundIcon="@mipmap/ic_launcher_v2" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
         <service android:name=".AniDownloadService" android:exported="false" android:foregroundServiceType="dataSync">
             <intent-filter><action android:name="androidx.media3.exoplayer.downloadService.action.RESTART" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
         </service>

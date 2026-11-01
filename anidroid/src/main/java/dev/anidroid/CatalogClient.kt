@@ -32,10 +32,7 @@ class CatalogClient(val connection: CatalogConnection) {
                 override fun getAcceptedIssuers() = emptyArray<X509Certificate>()
                 override fun checkClientTrusted(chain: Array<X509Certificate>,authType: String) { throw CertificateException("Client certificates are unsupported") }
                 override fun checkServerTrusted(chain: Array<X509Certificate>,authType: String) {
-                    val leaf=chain.firstOrNull() ?: throw CertificateException("Missing server certificate")
-                    leaf.checkValidity()
-                    val actual=MessageDigest.getInstance("SHA-256").digest(leaf.encoded).joinToString("") { "%02x".format(it) }
-                    if(!MessageDigest.isEqual(actual.toByteArray(),pin.toByteArray())) throw CertificateException("Catalog server certificate does not match")
+                    verifyCatalogCertificate(chain,pin)
                 }
             }
             val tls=SSLContext.getInstance("TLS").apply { init(null,arrayOf(trust),null) }
@@ -62,4 +59,12 @@ class CatalogClient(val connection: CatalogConnection) {
     fun search(query: String,page: Int) = get("/v1/search",mapOf("provider" to "luffy","q" to query,"page" to "$page"))
     fun streams(title: Title,episode: Episode,source: String = "auto") = get("/v1/streams",mapOf("source" to source,"provider" to "luffy","id" to title.id,"season" to "${episode.season}","episode" to episode.number)).array("streams").objects().map(::streamFromJson)
     fun details(title: Title) = get("/v1/details",mapOf("provider" to title.provider,"id" to title.id))
+}
+
+/** Private-server identity is the exact pinned leaf certificate, with current validity required. */
+internal fun verifyCatalogCertificate(chain: Array<X509Certificate>, pin: String) {
+    val leaf=chain.firstOrNull() ?: throw CertificateException("Missing server certificate")
+    leaf.checkValidity()
+    val actual=MessageDigest.getInstance("SHA-256").digest(leaf.encoded).joinToString("") { "%02x".format(it) }
+    if(!MessageDigest.isEqual(actual.toByteArray(),pin.toByteArray())) throw CertificateException("Catalog server certificate does not match")
 }

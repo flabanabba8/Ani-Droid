@@ -498,7 +498,7 @@ private object PosterCache {
                 }
                 if(details.title.provider=="luffy") Box {
                     OutlinedButton(onClick={sourceMenu=true}) {Text("Source: ${model.sourceMode}")}
-                    DropdownMenu(sourceMenu,{sourceMenu=false}) {listOf("auto","cinejoy","vixsrc","lookmovie").forEach { source -> DropdownMenuItem(text={Text(source)},onClick={sourceMenu=false;model.setSource(source);if(ep!=null)model.resolve(ep)})}}
+                    DropdownMenu(sourceMenu,{sourceMenu=false}) {listOf("auto","vixsrc","lookmovie").forEach { source -> DropdownMenuItem(text={Text(source)},onClick={sourceMenu=false;model.setSource(source);if(ep!=null)model.resolve(ep)})}}
                 }
                 if(ep == null && details.title.series) Box {
                     OutlinedButton(onClick = { seasonMenu = true }) { Text("Season $selectedSeason ▾") }
@@ -563,7 +563,7 @@ private object PosterCache {
         val factory = OfflineDownloads.playbackSource(context,playing.stream,playing.offlineId!=null)
         val offlineRequest=playing.offlineId?.let { OfflineDownloads.request(context,it) }
         ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(factory).setSubtitleParserFactory(SubtitleTiming(model.subtitleOffsetUs) {android.os.Handler(android.os.Looper.getMainLooper()).post {captionsLoaded=true}})).build().apply {
-            trackSelectionParameters = trackSelectionParameters.buildUpon().setMaxVideoSize(Int.MAX_VALUE, showPrefs.optInt("height",playing.stream.height).takeIf {it>0} ?: Int.MAX_VALUE).setPreferredTextLanguage(showPrefs.optString("subtitleLanguage","en")).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,showPrefs.optBoolean("subtitleOff")).setPreferredAudioLanguage(showPrefs.optString("audioLanguage").takeIf {it.isNotBlank()} ?: if(playing.title.provider=="luffy") "en" else null).build()
+            trackSelectionParameters = trackSelectionParameters.buildUpon().setMaxVideoSize(Int.MAX_VALUE, showPrefs.optInt("height",playing.stream.height).takeIf {it>0} ?: Int.MAX_VALUE).setForceHighestSupportedBitrate(true).setPreferredTextLanguage(showPrefs.optString("subtitleLanguage","en")).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,showPrefs.optBoolean("subtitleOff")).setPreferredAudioLanguage(showPrefs.optString("audioLanguage").takeIf {it.isNotBlank()} ?: if(playing.title.provider=="luffy") "en" else null).build()
             val wantedSubtitle=showPrefs.optString("subtitleLabel")
             val subtitleAvailable=playing.stream.captions.any {it.name==wantedSubtitle}
             val item = (offlineRequest?.toMediaItem()?.buildUpon() ?: MediaItem.Builder().setUri(playing.stream.url)).setSubtitleConfigurations(playing.stream.captions.map { sub ->
@@ -673,11 +673,11 @@ private object PosterCache {
                     qualityCap=height;model.rememberShow(playing.title,"height",height)
                     val alternative=model.streams.firstOrNull {it.height==height}
                     if(!tracks.groups.any {it.type==C.TRACK_TYPE_VIDEO && it.length>1} && alternative!=null && alternative.url!=playing.stream.url) {model.switchPlaybackStream(playing,alternative,player.currentPosition,player.playWhenReady);subtitleOptions=false}
-                    else player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setMaxVideoSize(Int.MAX_VALUE,if(height==0)Int.MAX_VALUE else height).setForceHighestSupportedBitrate(height>0).build()
+                    else player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setMaxVideoSize(Int.MAX_VALUE,if(height==0)Int.MAX_VALUE else height).setForceHighestSupportedBitrate(true).build()
                 }) {Text(if(height==0) "Auto quality" else "${height}p")}}
                 if(playing.title.provider=="luffy" && playing.offlineId==null) {
                     Text("Stream source")
-                    listOf("auto","cinejoy","vixsrc","lookmovie").forEach { source -> TextButton(enabled=!model.busy,onClick={model.switchPlaybackSource(playing,source,player.currentPosition,player.playWhenReady);subtitleOptions=false}) {Text("Use $source")} }
+                    listOf("auto","vixsrc","lookmovie").forEach { source -> TextButton(enabled=!model.busy,onClick={model.switchPlaybackSource(playing,source,player.currentPosition,player.playWhenReady);subtitleOptions=false}) {Text("Use $source")} }
                 }
                 TextButton(onClick={model.markWatched(playing.title,playing.episode,!model.isWatched(playing.title,playing.episode))}) {Text(if(model.isWatched(playing.title,playing.episode)) "Mark unwatched" else "Mark watched")}
                 Text("Your next episode",color=Color(model.subtitleColor),fontSize=model.subtitleSize.sp,modifier=Modifier.background(Color.Black).padding(12.dp))

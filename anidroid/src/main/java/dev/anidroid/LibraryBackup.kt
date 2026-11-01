@@ -37,7 +37,7 @@ object LibraryBackup {
     fun import(prefs: SharedPreferences,text: String) {
         require(text.toByteArray().size<=2*1024*1024) { "Backup is too large." }
         val input=JSONObject(text)
-        require(input.getInt("schema")==1 && input.keys().asSequence().all { it in setOf("schema","lists","preferences","shows","watched") }) { "Unsupported backup format." }
+        require(input.get("schema") is Int && input.getInt("schema")==1 && input.keys().asSequence().all { it in setOf("schema","lists","preferences","shows","watched") }) { "Unsupported backup format." }
         val values=input.getJSONObject("preferences")
         require(values.keys().asSequence().all { it in numbers || it in booleans || it in ignored }) { "Unsupported preference." }
         val savedLists=input.getJSONObject("lists")
@@ -56,11 +56,14 @@ object LibraryBackup {
         }
         val watched=input.getJSONArray("watched");require(watched.length()<=10000)
         (0 until watched.length()).forEach { require(watched.get(it) is String && watched.getString(it).matches(watchedPattern)) }
-        numbers.forEach { (key,range) -> if(values.has(key))require(values.getLong(key) in range.first.toLong()..range.last.toLong()) }
+        numbers.forEach { (key,range) -> if(values.has(key)) {
+            require(values.get(key) is Int || values.get(key) is Long) { "Invalid numeric preference." }
+            require(values.getLong(key) in range.first.toLong()..range.last.toLong())
+        } }
         if(values.has("subtitleSize")) require(values.getInt("subtitleSize") in listOf(16,20,24,28,32,36))
         if(values.has("subtitleColor")) require(values.getInt("subtitleColor") in listOf(-1,0xFFFFEB3B.toInt(),0xFF73E0C1.toInt(),0xFF80DEFF.toInt()))
         if(values.has("downloadHeight")) require(values.getInt("downloadHeight") in listOf(360,480,720,1080))
-        booleans.forEach { if(values.has(it))values.getBoolean(it) }
+        booleans.forEach { if(values.has(it))require(values.get(it) is Boolean) { "Invalid boolean preference." } }
         // Validate everything before making one atomic preference change.
         prefs.edit().apply {
             cleaned.forEach { (key,value)->putString(key,value.toString()) }

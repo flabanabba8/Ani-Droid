@@ -20,6 +20,7 @@ Start here in future sessions. This is the project's durable knowledge base, fol
 - [Authentication](authentication.md) — private BROKER_HOST broker, pairing, recovery and security limits.
 - [Current work](current-work.md) — implementation status and next steps.
 - [Offline chapters and reusable performances](next-milestone.md) — pronunciation, series profiles, preparation and remaining spoiler work.
+- [Samsung Tizen TV target](samsung-tizen-tv.md) -- device facts, developer mode, sdb and signing for the TV port.
 - [Verification evidence](../VERIFICATION.md) — actual test results, not aspirations.
 - [Voice research](../docs/voices.md) — official voice metadata and prompt policy.
 

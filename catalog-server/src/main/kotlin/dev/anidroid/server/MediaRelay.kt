@@ -98,14 +98,20 @@ class MediaRelay(bind: String, val port: Int) : AutoCloseable {
     }
     override fun close() {server.stop(1);pool.shutdownNow();sessions.clear()}
     companion object {
+        /**
+         * Keeps only the best variant at or below [height] (0 = no cap): Tizen's player otherwise starts at the lowest
+         * and never climbs. A lone variant is listed twice (copy at 98% BANDWIDTH) because Tizen 5.5 fails ("Format error") on single-variant masters.
+         */
         fun limitQuality(text: String,height: Int): String {
-            if(height==0)return text
-            val lines=text.lines();val remove=mutableSetOf<Int>()
-            lines.forEachIndexed { i,line -> if(line.startsWith("#EXT-X-STREAM-INF:")) {
-                val h=Regex("RESOLUTION=[0-9]+x([0-9]+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
-                if(h!=null && h>height) {remove+=i;var n=i+1;while(n<lines.size && (lines[n].isBlank() || lines[n].startsWith('#')))n++;if(n<lines.size)remove+=n}
-            } }
-            return lines.filterIndexed {i,_->i !in remove}.joinToString("\n")
+            val lines=text.lines()
+            val blocks=lines.indices.filter {lines[it].startsWith("#EXT-X-STREAM-INF:")}.map { i ->
+                var n=i+1;while(n<lines.size && (lines[n].isBlank() || lines[n].startsWith('#')))n++
+                Triple(i,minOf(n,lines.size-1),Regex("RESOLUTION=[0-9]+x([0-9]+)").find(lines[i])?.groupValues?.get(1)?.toIntOrNull())
+            }
+            val best=blocks.mapNotNull {it.third}.filter {height==0 || it<=height}.maxOrNull() ?: return text
+            val kept=blocks.filter {it.third==best}.flatMap {b -> (b.first..b.second).map {lines[it]}}
+            val inBlocks=blocks.flatMap {(it.first..it.second).toList()}.toSet()
+            return (lines.filterIndexed {i,l -> i !in inBlocks && l.isNotBlank()} + kept + (if(blocks.count {it.third==best}==1) listOf(Regex("BANDWIDTH=([0-9]+)").replace(kept[0]) {"BANDWIDTH="+(it.groupValues[1].toLong()*49/50)}) + kept.drop(1) else emptyList())).joinToString("\n",postfix="\n")
         }
         fun srtToVtt(text: String) = "WEBVTT\n\n" + Regex("(\\d{2}:\\d{2}:\\d{2}),(\\d{3})").replace(text.trimStart('\uFEFF').replace("\r\n","\n"),"$1.$2")
         fun rewritePlaylist(text: String,base: String,map: (String)->String): String = text.lineSequence().joinToString("\n") { line ->

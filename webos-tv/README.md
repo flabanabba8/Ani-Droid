@@ -2,7 +2,7 @@
 
 A remote-friendly webOS app with catalog browsing, source/genre/type filters, live search, episode selection, favorites, fullscreen video and resume positions. The default UI uses large couch-distance text and four poster columns; **Larger text** increases it further and switches to three columns. Subtitle styling is independent of UI text size.
 
-The target tested here is an LG C1 running webOS SDK 6.5.3 (Chromium 79, Node 8.12). The app avoids unsupported flex-gap/inset layout features. UI controls work with directional keys, OK, Back and the Magic Remote pointer. During playback, left/right seek, OK pauses/plays, and Back returns to episodes.
+The target tested here is an LG C1 running webOS SDK 6.5.3 (Chromium 79, Node 8.12). The app avoids unsupported flex-gap/inset layout features. UI controls work with directional keys, OK, Back and the Magic Remote pointer. During playback, left/right seek, OK pauses/plays, Up reaches the playback buttons (Left/Right, OK, Down to leave), and Back returns to episodes.
 
 ## Build
 

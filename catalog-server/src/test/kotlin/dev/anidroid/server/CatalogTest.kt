@@ -140,7 +140,12 @@ class CatalogTest {
         org.junit.Assert.assertTrue(limited.contains("720.m3u8"))
         org.junit.Assert.assertTrue(limited.contains("audio.m3u8"))
         org.junit.Assert.assertTrue(limited.contains("en.m3u8"))
-        org.junit.Assert.assertEquals(master,MediaRelay.limitQuality(master,0))
+        val auto=MediaRelay.limitQuality("#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=854x480\n480.m3u8\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080\n1080.m3u8\n",0)
+        assertFalse(auto.contains("480.m3u8"))
+        assertEquals(2,auto.split("\n1080.m3u8").size-1) // lone variant duplicated for Tizen
+        assertEquals(2,limited.split("\n720.m3u8").size-1)
+        assertTrue(MediaRelay.limitQuality("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000,RESOLUTION=1x720\n720.m3u8\n",0).contains("BANDWIDTH=980,"))
+        org.junit.Assert.assertEquals("#EXTM3U\nsegment.ts\n",MediaRelay.limitQuality("#EXTM3U\nsegment.ts\n",0))
     }
 
 }

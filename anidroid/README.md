@@ -55,3 +55,23 @@ Caption timing is applied during text parsing, including after seeks; changing i
 
 Verification (Android emulator, local fixtures only): unit tests, lint, debug builds, and instrumentation tests for backup round-trip/rejection (no partial changes), batch queueing, watched markers, expired-link renewal against a fixture server that returns 403, offline download/playback, and subtitle timing. The catalog-connected and live-provider tests were skipped on this run; live Luffy/anime recovery against real providers was not exercised.
 
+
+## Backup-import regression checks
+
+Numeric preferences must be JSON integers and boolean preferences must be JSON booleans.
+The schema version must be the integer `1`. String-coerced and fractional values are
+rejected before the single preference edit, preserving the current library on failure.
+`LibraryBackupTest` exercises these failures and a valid import with an in-memory
+preference store; it requires no phone, server, provider, account or emulator.
+Run `./gradlew :anidroid:testDebugUnitTest :anidroid:lintDebug` after sourcing `tools/env.sh`.
+
+## Platform backup and private-server checks
+
+Android cloud backup and device-to-device extraction explicitly exclude every app-data
+storage domain; older full backup remains disabled. Use the app's deliberate JSON
+export to move supported library data, with server credentials and downloaded media
+excluded. Manufacturer-specific device-transfer behavior still requires a device test.
+Policy source: https://developer.android.com/identity/data/autobackup (checked 2026-10-29).
+`CatalogTrustTest` verifies a valid exact certificate pin, wrong pin, missing certificate,
+expired-but-matching certificate and invalid connection settings without external traffic.
+Its bundled certificates are public fixtures; their private keys were discarded.
